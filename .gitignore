@@ -36,3 +36,6 @@ Temporary Items
 
 
 .vscode/
+
+# Python
+/env
