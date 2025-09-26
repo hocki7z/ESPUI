@@ -225,19 +225,24 @@ function handleVisibilityChange() {
 function start() {
     let location = window.location.hostname;
     let port = window.location.port;
-//    let location = "192.168.10.198";
-//    let port = "";
+    let protocol = window.location.protocol;
+    let socket_url = "";
+    //    let location = "192.168.10.198";
+    //    let port = "";
 
     document.addEventListener("visibilitychange", handleVisibilityChange, false);
-    if (
-        port != "" ||
-        port != 80 ||
-        port != 443
-    ) {
-        websock = new WebSocket( "ws://" + location + ":" + port + "/ws" );
+
+    // Build Websocket URL
+    if (protocol == "https:") {
+        socket_url = "wss://";
     } else {
-        websock = new WebSocket("ws://" + location + "/ws");
+        socket_url = "ws://";
     }
+    socket_url += location
+    if (port != "" || port != 80 || port != 443) {
+        socket_url += ":" + port;
+    }
+    websock = new WebSocket(socket_url + "/ws");
 
     // is the timer running?
     if (null === WebSocketTimer) {
@@ -370,7 +375,7 @@ function start() {
                 if (data.visible) addToHTML(data);
                 break;
 
-                /*
+            /*
               These elements must call additional functions after being added to the DOM
             */
             case UI_BUTTON:
@@ -639,13 +644,12 @@ function start() {
                 break;
 
             case UI_FILEDISPLAY:
-                if (data.visible)
-                {
+                if (data.visible) {
                     addToHTML(data);
                     FileDisplayUploadFile(data);
                 }
                 break;
-    
+
             /*
              * Update messages change the value/style of a component without adding new HTML
              */
@@ -884,7 +888,7 @@ function start() {
             case UPDATE_FILEDISPLAY:
                 FileDisplayUploadFile(data);
                 break;
-        
+
             case UI_FRAGMENT:
                 // console.info("Starting Fragment Processing");
                 let FragmentLen = data.length;
@@ -900,24 +904,22 @@ function start() {
                 // console.info("UI_FRAGMENT:Arrived            '" + Arrived + "'");
                 // console.info("UI_FRAGMENT:FragmentFinal      '" + FragmentFinal + "'");
 
-                if (!data.hasOwnProperty('control')) 
-                {
+                if (!data.hasOwnProperty('control')) {
                     console.error("UI_FRAGMENT:Missing control record, skipping control");
                     // console.info("Done Fragment Processing");
                     break;
                 }
                 let control = data.control;
                 StopFragmentAssemblyTimer(data.control.id);
-                
+
                 // is this the first fragment?
-                if(0 === FragementOffset)
-                {
+                if (0 === FragementOffset) {
                     // console.info("Found first fragment");
                     controlAssemblyArray[control.id] = data;
                     // console.info("Value: " + controlAssemblyArray[control.id].control.value);
                     controlAssemblyArray[control.id].offset = NextFragmentOffset;
                     StartFragmentAssemblyTimer(control.id);
-                    let TotalRequest = JSON.stringify({ 'id' : control.id, 'offset' : NextFragmentOffset });
+                    let TotalRequest = JSON.stringify({ 'id': control.id, 'offset': NextFragmentOffset });
                     websock.send("uifragmentok:" + 0 + ": " + TotalRequest + ":");
                     // console.info("asked for fragment " + TotalRequest);
                     // console.info("Done Fragment Processing");
@@ -925,24 +927,22 @@ function start() {
                 }
 
                 // not first fragment. are we assembling this control?
-                if("undefined" === typeof controlAssemblyArray[control.id])
-                {
+                if ("undefined" === typeof controlAssemblyArray[control.id]) {
                     // it looks like we missed the first fragment. Start the control over
                     console.error("Missing first fragment for control: " + control.id);
                     StartFragmentAssemblyTimer(control.id);
-                    let TotalRequest = JSON.stringify({ 'id' : control.id, 'offset' : 0 });
+                    let TotalRequest = JSON.stringify({ 'id': control.id, 'offset': 0 });
                     websock.send("uifragmentok:" + 0 + ": " + TotalRequest + ":");
                     // console.info("asked for fragment " + TotalRequest);
                     // console.info("Done Fragment Processing");
                     break;
                 }
-                
+
                 // is this the expected next fragment
-                if(FragementOffset !== controlAssemblyArray[control.id].offset)
-                {
+                if (FragementOffset !== controlAssemblyArray[control.id].offset) {
                     console.error("Wrong next fragment. Expected: " + controlAssemblyArray[control.id].offset + " Got: " + FragementOffset);
                     StartFragmentAssemblyTimer(control.id);
-                    let TotalRequest = JSON.stringify({ 'id' : control.id, 'offset' : controlAssemblyArray[control.id].length + controlAssemblyArray[control.id].offset });
+                    let TotalRequest = JSON.stringify({ 'id': control.id, 'offset': controlAssemblyArray[control.id].length + controlAssemblyArray[control.id].offset });
                     websock.send("uifragmentok:" + 0 + ": " + TotalRequest + ":");
                     // console.info("asked for the expected fragment: " + TotalRequest);
                     // console.info("Done Fragment Processing");
@@ -954,8 +954,7 @@ function start() {
                 controlAssemblyArray[control.id].offset = NextFragmentOffset;
                 // console.info("Value: " + controlAssemblyArray[control.id].control.value);
 
-                if(true === FragmentFinal)
-                {
+                if (true === FragmentFinal) {
                     var fauxEvent = {
                         data: JSON.stringify(controlAssemblyArray[control.id].control),
                     };
@@ -963,11 +962,10 @@ function start() {
                     controlAssemblyArray[control.id] = null;
                     // console.info("Found last fragment");
                 }
-                else
-                {
+                else {
                     // console.info("Ask for next fragment.");
                     StartFragmentAssemblyTimer(control.id);
-                    let TotalRequest = JSON.stringify({ 'id' : control.id, 'offset' : NextFragmentOffset});
+                    let TotalRequest = JSON.stringify({ 'id': control.id, 'offset': NextFragmentOffset });
                     websock.send("uifragmentok:" + 0 + ": " + TotalRequest + ":");
                     // console.info("asked for the next fragment: " + TotalRequest);
                 }
@@ -1024,8 +1022,7 @@ function start() {
     websock.onmessage = handleEvent;
 }
 
-async function FileDisplayUploadFile(data)
-{
+async function FileDisplayUploadFile(data) {
     let text = await downloadFile(data.value);
     let ItemToUpdateId = "fd" + data.id;
     // console.info("ItemToUpdateId: " + ItemToUpdateId);
@@ -1044,45 +1041,37 @@ async function FileDisplayUploadFile(data)
 
 } // FileDisplayUploadFile
 
-async function downloadFile(filename)
-{
+async function downloadFile(filename) {
     let response = await fetch(filename);
-		
-	if(response.status != 200) {
-		throw new Error("File Read Server Error: '" + response.status + "'");
-	}
-		
-	// read response stream as text
-	let text_data = await response.text();
 
-	return text_data;
+    if (response.status != 200) {
+        throw new Error("File Read Server Error: '" + response.status + "'");
+    }
+
+    // read response stream as text
+    let text_data = await response.text();
+
+    return text_data;
 } // downloadFile
 
-function StartFragmentAssemblyTimer(Id)
-{
+function StartFragmentAssemblyTimer(Id) {
     StopFragmentAssemblyTimer(Id);
-    FragmentAssemblyTimer[Id] = setInterval(function(_Id)
-    {
+    FragmentAssemblyTimer[Id] = setInterval(function (_Id) {
         // does the fragment assembly still exist?
-        if("undefined" !== typeof controlAssemblyArray[_Id])
-        {
-            if(null !== controlAssemblyArray[_Id])
-            {
+        if ("undefined" !== typeof controlAssemblyArray[_Id]) {
+            if (null !== controlAssemblyArray[_Id]) {
                 // we have a valid control that is being assembled
                 // ask for the next part
-                let TotalRequest = JSON.stringify({ 'id' : controlAssemblyArray[_Id].control.id, 'offset' : controlAssemblyArray[_Id].offset});
+                let TotalRequest = JSON.stringify({ 'id': controlAssemblyArray[_Id].control.id, 'offset': controlAssemblyArray[_Id].offset });
                 websock.send("uifragmentok:" + 0 + ": " + TotalRequest + ":");
             }
         }
     }, 1000, Id);
 }
 
-function StopFragmentAssemblyTimer(Id)
-{
-    if("undefined" !== typeof FragmentAssemblyTimer[Id])
-    {
-        if(FragmentAssemblyTimer[Id])
-        {
+function StopFragmentAssemblyTimer(Id) {
+    if ("undefined" !== typeof FragmentAssemblyTimer[Id]) {
+        if (FragmentAssemblyTimer[Id]) {
             clearInterval(FragmentAssemblyTimer[Id]);
         }
     }
