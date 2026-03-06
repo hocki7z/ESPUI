@@ -1122,6 +1122,7 @@ function buttonclick(number, isdown) {
     if ($("#btn" + number).prop("disabled")) {
         return;
     }
+    $("#btn" + number).focus();
     if (isdown) websock.send("bdown:" + number);
     else websock.send("bup:" + number);
 }
@@ -1297,10 +1298,10 @@ var elementHTML = function (data) {
                 data.value + "</span></div>";
         case UI_NUMBER:
             return "<input style='color:black; " + data.elementStyle + "' id='num" + id +
-                "' type='number' value='" + data.value + "' onchange='numberchange(" + id + ")' />";
+                "' type='number' value='" + data.value + "' oninput='numberchange(" + id + ")' />";
         case UI_TEXT_INPUT:
             return "<input " + inputType + "style='color:black; " + data.elementStyle + "' id='text" + id +
-                "' value='" + data.value + "' onchange='textchange(" + id + ")' />";
+                "' value='" + data.value + "' oninput='textchange(" + id + ")' />";
         case UI_SELECT:
             return "<select style='color:black; " + data.elementStyle + "' id='select" + id +
                 "' onchange='selectchange(" + id + ")' />";
