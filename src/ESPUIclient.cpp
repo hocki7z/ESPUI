@@ -2,6 +2,7 @@
 #include "ESPUIclient.h"
 #include "ESPUIcontrol.h"
 
+
 // JSONSlave:
 // helper to process exact JSON serialization size
 // it takes ~2ms on esp8266 and avoid large String reallocation which is really worth the cost
@@ -359,9 +360,9 @@ bool ESPUIclient::SendJsonDocToWebSocket(JsonDocument& document)
             break;
         }
 
-        String json = JSONSlave::toString(document);
+        //String json = JSONSlave::toString(document);
 
-        #if defined(DEBUG_ESPUI)
+        /*#if defined(DEBUG_ESPUI)
             if (ESPUI.verbosity >= Verbosity::VerboseJSON)
             {
                 Serial.println(String(F("ESPUIclient::SendJsonDocToWebSocket: json: '")) + json + "'");
@@ -373,14 +374,27 @@ bool ESPUIclient::SendJsonDocToWebSocket(JsonDocument& document)
             {
                 Serial.println(F("ESPUIclient::SendJsonDocToWebSocket: client.text"));
             }
-        #endif
+        #endif*/
         // Serial.println(F("ESPUIclient::SendJsonDocToWebSocket: client.text"));
 	//Serial.printf("json length %u\n\r",json.length());
 	//Serial.printf("json _cstr length %u\n\r", strlen(json.c_str()));
 	//Serial.printf("last char %u\n\r", *(json.c_str() + strlen(json.c_str())));
 	//Serial.println(json);
         //delay(500);
-	client->text(json);
+	/*std::string json {};
+	serializeJson(document, json);
+	Serial.printf("\n\r*********JSON length %u\n\r",json.length());
+	//Serial.printf("\n\r*********JSON length %u\n\r",strlen(json));
+
+	client->text(json.c_str());*/
+	const size_t len = measureJson(document);
+
+  	// original API from me-no-dev
+  	AsyncWebSocketMessageBuffer* buffer = ESPUI.WebSocket()->makeBuffer(len);
+  	//assert(buffer); // up to you to keep or remove this
+  	serializeJson(document, buffer->get(), len);
+  	client->text(buffer);
+
 
     } while (false);
 
