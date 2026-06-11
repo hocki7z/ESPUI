@@ -381,6 +381,7 @@ bool ESPUIclient::SendJsonDocToWebSocket(JsonDocument& document)
 	//Serial.printf("last char %u\n\r", *(json.c_str() + strlen(json.c_str())));
 	//Serial.println(json);
         //delay(500);
+	//client->text(json);
 	/*std::string json {};
 	serializeJson(document, json);
 	Serial.printf("\n\r*********JSON length %u\n\r",json.length());
