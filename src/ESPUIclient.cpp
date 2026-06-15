@@ -2,7 +2,7 @@
 #include "ESPUIclient.h"
 #include "ESPUIcontrol.h"
 
-
+static size_t max_buffer_len = 0;
 // JSONSlave:
 // helper to process exact JSON serialization size
 // it takes ~2ms on esp8266 and avoid large String reallocation which is really worth the cost
@@ -227,7 +227,7 @@ bool ESPUIclient::onWsEvent(AwsEventType type, void* arg, uint8_t* data, size_t 
             }
 
             // Serial.println(F("WS_EVT_DATA:Process Control"));
-            Control* control = ESPUI.getControl(id);
+            BasicControl* control = ESPUI.getControl(id);
             if (nullptr == control)
             {
                 #if defined(DEBUG_ESPUI)
@@ -389,14 +389,14 @@ bool ESPUIclient::SendJsonDocToWebSocket(JsonDocument& document)
 
 	client->text(json.c_str());*/
 	const size_t len = measureJson(document);
-
+        if (len > max_buffer_len)
+	 max_buffer_len = len;
+        log_i("max_buffer_len %lu", max_buffer_len);
   	// original API from me-no-dev
   	AsyncWebSocketMessageBuffer* buffer = ESPUI.WebSocket()->makeBuffer(len);
   	//assert(buffer); // up to you to keep or remove this
   	serializeJson(document, buffer->get(), len);
   	client->text(buffer);
-
-
     } while (false);
 
     return Response;

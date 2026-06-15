@@ -8,6 +8,9 @@
 class _ESPUIcontrolMgr
 {
 public:
+
+    typedef BasicControl ControlObject_t;
+
     _ESPUIcontrolMgr();
     ~_ESPUIcontrolMgr() {}
     _ESPUIcontrolMgr (_ESPUIcontrolMgr const&) = delete;
@@ -19,30 +22,36 @@ public:
                                     Control::Color color,
                                     Control::ControlId_t parentControl,
                                     bool visible,
-                                    std::function<void(Control*, int)> callback);
+                                    void (*callback)(BasicControl*, int, void*),
+ 				    void *userData = nullptr);
+
     Control::ControlId_t addControl(Control::Type type,
                                     const char* label,
                                     long value,
                                     Control::Color color,
                                     Control::ControlId_t parentControl,
                                     bool visible,
-                                    std::function<void(Control*, int)> callback);
+                                    void (*callback)(BasicControl*, int, void*),
+ 				    void *userData = nullptr);
+
      Control::ControlId_t addControl(Control::Type type,
                                     const char* label,
                                     const char* value,
                                     Control::Color color,
                                     Control::ControlId_t parentControl,
                                     bool visible,
-                                    std::function<void(Control*, int)> callback);
+                                    void (*callback)(BasicControl*, int, void*),
+ 				    void *userData = nullptr);
+
     bool removeControl(Control::ControlId_t id);
     uint16_t removeSelectOptions(Control::ControlId_t select_id,  Control::ControlId_t skip_id = 0xFFFF);
     void RemoveToBeDeletedControls();
 
-    Control* getControl(Control::ControlId_t id);
-    Control* getControlNoLock(Control::ControlId_t id);
+    BasicControl* getControl(Control::ControlId_t id);
+    BasicControl* getControlNoLock(Control::ControlId_t id);
     Control::ControlId_t GetControlCount() {return controlCount;}
-    Control* getFirstOptionId(Control::ControlId_t selector, long value);
-    Control* getFirstOptionIdNoLock(Control::ControlId_t selector, long value);
+    BasicControl* getFirstOptionId(Control::ControlId_t selector, long value);
+    BasicControl* getFirstOptionIdNoLock(Control::ControlId_t selector, long value);
 
     
 
@@ -52,13 +61,13 @@ public:
                               String FragmentRequestString,
                               uint32_t CurrentSyncID);
 private:
-    class ControlObject_t : public Control
+    /*class ControlObject_t : public Control
     {
 public:
         ControlObject_t(Control::ControlId_t id,
                         Type type,
                         const char* label,
-                        std::function<void(Control*, int)> callback,
+                        std::function<void(BasicControl*, int, void*)> callback,
                         const String& value,
                         Color color,
                         bool visible,
@@ -67,7 +76,7 @@ public:
 ControlObject_t(Control::ControlId_t id,
                         Type type,
                         const char* label,
-                        std::function<void(Control*, int)> callback,
+                        std::function<void(BasicControl*, int, void*)> callback,
                         long value,
                         Color color,
                         bool visible,
@@ -76,7 +85,7 @@ ControlObject_t(Control::ControlId_t id,
 ControlObject_t(Control::ControlId_t id,
                         Type type,
                         const char* label,
-                        std::function<void(Control*, int)> callback,
+                        std::function<void(BasicControl*, int, void*)> callback,
                         const char* value,
                         Color color,
                         bool visible,
@@ -84,7 +93,7 @@ ControlObject_t(Control::ControlId_t id,
 
 
         ControlObject_t * next = nullptr;
-    }; // ControlObject_t
+    }; */ // ControlObject_t
 
     ControlObject_t * controls = nullptr;
     Control::ControlId_t controlCount = 0;

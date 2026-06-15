@@ -54,12 +54,12 @@ void _ESPUIcontrolMgr::RemoveToBeDeletedControls()
 #endif // def ESP32
 }
 
-Control* _ESPUIcontrolMgr::getControl(Control::ControlId_t id)
+BasicControl* _ESPUIcontrolMgr::getControl(Control::ControlId_t id)
 {
 #ifdef ESP32
     xSemaphoreTake(ControlsSemaphore, portMAX_DELAY);
 #endif // !def ESP32
-    Control* Response = getControlNoLock(id);
+    BasicControl* Response = getControlNoLock(id);
 #ifdef ESP32
     xSemaphoreGive(ControlsSemaphore);
 #endif // !def ESP32
@@ -69,7 +69,7 @@ Control* _ESPUIcontrolMgr::getControl(Control::ControlId_t id)
 // WARNING: Anytime you walk the chain of controllers, the protection semaphore
 //          MUST be locked. This function assumes that the semaphore is locked
 //          at the time it is called. Make sure YOU locked it :)
-Control* _ESPUIcontrolMgr::getControlNoLock(Control::ControlId_t id)
+BasicControl* _ESPUIcontrolMgr::getControlNoLock(Control::ControlId_t id)
 {
     return getControlObjectNoLock(id);
 } // getControlNoLock
@@ -98,19 +98,19 @@ _ESPUIcontrolMgr::ControlObject_t * _ESPUIcontrolMgr::getControlObjectNoLock(Con
     return Response;
 } // getControlObjectNoLock
 
-Control* _ESPUIcontrolMgr::getFirstOptionId(Control::ControlId_t selector, long value)
+BasicControl* _ESPUIcontrolMgr::getFirstOptionId(Control::ControlId_t selector, long value)
 {
 #ifdef ESP32
     xSemaphoreTake(ControlsSemaphore, portMAX_DELAY);
 #endif // !def ESP32
-    Control* Response = getFirstOptionIdNoLock(selector, value);
+    BasicControl* Response = getFirstOptionIdNoLock(selector, value);
 #ifdef ESP32
     xSemaphoreGive(ControlsSemaphore);
 #endif // !def ESP32
     return Response;
 }
 
-Control* _ESPUIcontrolMgr::getFirstOptionIdNoLock(Control::ControlId_t selector, long value)
+BasicControl* _ESPUIcontrolMgr::getFirstOptionIdNoLock(Control::ControlId_t selector, long value)
 {
     return getFirstOptionIdObjectNoLock(selector, value);
 } 
@@ -142,7 +142,7 @@ bool _ESPUIcontrolMgr::removeControl(Control::ControlId_t id)
 {
     bool Response = false;
 
-    Control* control = getControl(id);
+    BasicControl* control = getControl(id);
     if (control)
     {
         Response = true;
@@ -177,7 +177,7 @@ uint16_t _ESPUIcontrolMgr::removeSelectOptions(Control::ControlId_t select_id, C
 	     (CurrentControl->GetId() != skip_id))
         {
             CurrentControl->ToBeDeleted();
-    	    CurrentControl->callback = nullptr;
+    	    CurrentControl->setCallback(nullptr);
             Response++;
             controlCount--;
          }
@@ -354,13 +354,18 @@ uint32_t _ESPUIcontrolMgr::prepareJSONChunk(uint16_t startindex,
             //Serial.println(String(F("prepareJSONChunk:                ControlIsFragmented: ")) + String(ControlIsFragmented));
 
             // did the control get added to the doc?
+            /*if (measureJson(rootDoc) > MaxMarshaledJsonSize) {
+		CurrentControlObject = nullptr;
+		Serial.printf("measureJson %u, MaxMarshaledJsonSize %u\n\r", measureJson(rootDoc), MaxMarshaledJsonSize);
+	    }*/
+
             if (0 == SpaceUsedByMarshaledControl ||
                 (ESPUI.jsonChunkNumberMax > 0 && (elementcount % ESPUI.jsonChunkNumberMax) == 0))
             {
                 //Serial.println( String("prepareJSONChunk: too much data in the message. Remove the last entry"));
                 if (1 == elementcount)
                 {
-                    //Serial.println(String(F("prepareJSONChunk: Control ")) +/* String(Control->id)*/ + F(" is too large to be sent to the browser."));
+                    //Serial.println(String(F("prepareJSONChunk: Control "))  + F(" is too large to be sent to the browser."));
                     ////Serial.println(String(F("ERROR: prepareJSONChunk: value: ")) + control->value);
                     rootDoc.clear();
                     item = AllocateJsonObject(items);
@@ -388,6 +393,8 @@ uint32_t _ESPUIcontrolMgr::prepareJSONChunk(uint16_t startindex,
             else
             {
                 //Serial.println("prepareJSONChunk: Next Control");
+		//Serial.printf("measureJson %u, MaxMarshaledJsonSize %u\n\r", measureJson(rootDoc), MaxMarshaledJsonSize);
+
                 CurrentControlObject = CurrentControlObject->next;
             }
         } // end while (control != nullptr)
@@ -409,11 +416,12 @@ Control::ControlId_t _ESPUIcontrolMgr::addControl(Control::Type type,
                                                   Control::Color color,
                                                   Control::ControlId_t parentControl,
                                                   bool visible,
-                                                  std::function<void(Control*, int)> callback)
+                                                  void (*callback)(BasicControl*, int, void*),
+ 				    		  void *userData)
 {
     // Create a Wrapper and a control
 
-    ControlObject_t * NewControlObject  = new ControlObject_t(++idCounter, type, label, callback, value, color, visible, parentControl);
+    Control * NewControlObject  = new Control(++idCounter, type, label, callback, value, color, visible, parentControl, userData);
     NewControlObject->next = nullptr;
 
 #ifdef ESP32
@@ -450,11 +458,23 @@ Control::ControlId_t _ESPUIcontrolMgr::addControl(Control::Type type,
                                                   Control::Color color,
                                                   Control::ControlId_t parentControl,
                                                   bool visible,
-                                                  std::function<void(Control*, int)> callback)
+                                                  void (*callback)(BasicControl*, int, void*),
+ 				    		  void *userData)
 {
     // Create a Wrapper and a control
 
-    ControlObject_t * NewControlObject  = new ControlObject_t(++idCounter, type, label, callback, value, color, visible, parentControl);
+    BasicControl * NewControlObject = nullptr;
+
+    if (type == Control::Type::Option)
+      NewControlObject = new BasicControl(++idCounter, type, label, value, color, visible, parentControl);
+    else
+    if (type == Control::Type::Label)
+      NewControlObject = new LabelControl(++idCounter, type, label, value, color, visible, parentControl);
+    else
+      NewControlObject = new Control(++idCounter, type, label, callback, value, color, visible, parentControl, userData);
+
+//log_i("long %u, %s", type, label);
+
     NewControlObject->next = nullptr;
 
 #ifdef ESP32
@@ -490,11 +510,14 @@ Control::ControlId_t _ESPUIcontrolMgr::addControl(Control::Type type,
                                                   Control::Color color,
                                                   Control::ControlId_t parentControl,
                                                   bool visible,
-                                                  std::function<void(Control*, int)> callback)
+                                                  void (*callback)(BasicControl*, int, void*),
+ 				    		  void *userData)
 {
     // Create a Wrapper and a control
 
-    ControlObject_t * NewControlObject  = new ControlObject_t(++idCounter, type, label, callback, value, color, visible, parentControl);
+    Control * NewControlObject  = new Control(++idCounter, type, label, callback, value, color, visible, parentControl, userData);
+//log_i("pchar %u, %s", type, label);
+
     NewControlObject->next = nullptr;
 
 #ifdef ESP32
@@ -524,23 +547,23 @@ Control::ControlId_t _ESPUIcontrolMgr::addControl(Control::Type type,
     return NewControlObject->GetId();
 }
 
-
-_ESPUIcontrolMgr::ControlObject_t::ControlObject_t(Control::ControlId_t id, Control::Type type, const char* label, std::function<void(Control*, int)> callback,
+/*
+_ESPUIcontrolMgr::ControlObject_t::ControlObject_t(Control::ControlId_t id, Control::Type type, const char* label, void (*callback)(BasicControl*, int),
     const String& value, Control::Color color, bool visible, ControlId_t parentControl)
     : Control(id, type, label, callback, value, color, visible, parentControl)
 {}
 
 
-_ESPUIcontrolMgr::ControlObject_t::ControlObject_t(Control::ControlId_t id, Control::Type type, const char* label, std::function<void(Control*, int)> callback,
+_ESPUIcontrolMgr::ControlObject_t::ControlObject_t(Control::ControlId_t id, Control::Type type, const char* label, void (*callback)(BasicControl*, int),
     long value, Control::Color color, bool visible, ControlId_t parentControl)
     : Control(id, type, label, callback, value, color, visible, parentControl)
 {}
 
 
-_ESPUIcontrolMgr::ControlObject_t::ControlObject_t(Control::ControlId_t id, Control::Type type, const char* label, std::function<void(Control*, int)> callback,
+_ESPUIcontrolMgr::ControlObject_t::ControlObject_t(Control::ControlId_t id, Control::Type type, const char* label, void (*callback)(BasicControl*, int),
     const char* value, Control::Color color, bool visible, ControlId_t parentControl)
     : Control(id, type, label, callback, value, color, visible, parentControl)
-{}
+{}*/
 
 // Instantiate the singleton
 _ESPUIcontrolMgr ESPUIcontrolMgr;
