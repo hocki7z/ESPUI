@@ -146,6 +146,7 @@ struct {
     virtual void SendCallback(int type) {};
     virtual bool HasCallback() { return false; }
     virtual void setCallback(void (*callback_ptr)(BasicControl*, int, void*)) {}
+    virtual void setUserData(void* _userData) {};
     virtual bool MarshalControl(ArduinoJson::JsonObject& item, bool refresh, uint32_t DataOffset, uint32_t MaxLength, uint32_t & EstimmatedUsedSpace);
     void MarshalErrorMessage(ArduinoJson::JsonObject& item);
     virtual void DeleteControl();
@@ -256,6 +257,7 @@ public:
 
 
     void setCallback(void (*callback_ptr)(BasicControl*, int, void*)) override { callback = callback_ptr; }
+    void setUserData(void* _userData) override { userData = _userData; }
     void SendCallback(int type) override;
     bool HasCallback() override { return (nullptr != callback); }
     //bool MarshalControl(ArduinoJson::JsonObject& item, bool refresh, uint32_t DataOffset, uint32_t MaxLength, uint32_t & EstimmatedUsedSpace) override;
