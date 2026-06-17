@@ -592,7 +592,12 @@ Control::ControlId_t ESPUIClass::addControl(Control::Type type, const char* labe
 Control::ControlId_t ESPUIClass::addControl(Control::Type type, const char* label, long value, Control::Color color, Control::ControlId_t parentControl, void (*callback)(BasicControl*, int, void*), void* userData)
     {
     Control::ControlId_t id = ESPUIcontrolMgr.addControl(type, label, value, color, parentControl, true, callback, userData);
-    NotifyClients(ClientUpdateType_t::RebuildNeeded);
+    if (type == Control::Type::Option) {
+      getControl(id)->SetControlChangedId(GetNextControlChangeId());
+      NotifyClients(ClientUpdateType_t::UpdateNeeded);
+    }
+    else
+      NotifyClients(ClientUpdateType_t::RebuildNeeded);
     return id;
 
     }
