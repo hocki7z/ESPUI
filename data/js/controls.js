@@ -1042,12 +1042,12 @@ var elementHTML = function (data) {
                     : "") +
                 "</nav>";
         case UI_SLIDER:
-            return "<div class='range-slider " +
+            return "<span class='range-slider " +
                 (data.hasOwnProperty('vertical') ? " vert-slider " : "") +
                 "'>" +
                 "<input id='sl" + id + "' type='range' min='0' max='100' value='" + data.value + "' " +
                 elementStyle + " class='range-slider__range'><span class='range-slider__value'>" +
-                data.value + "</span></div>";
+                data.value + "</span></span>";
         case UI_NUMBER:
             return "<input style='color:black; " + data.elementStyle + "' id='num" + id +
                 "' type='number' value='" + data.value + "' onchange='numberchange(" + id + ")' />";
