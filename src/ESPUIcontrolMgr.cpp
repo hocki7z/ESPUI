@@ -252,14 +252,14 @@ uint32_t _ESPUIcontrolMgr::prepareJSONChunk(uint16_t startindex,
                 break;
             }
 
-            if(!FragmentRequest.containsKey(F("id")))
+            if(!FragmentRequest["id"].is<JsonVariant>())
             {
                 //Serial.println(F("ERROR:prepareJSONChunk:Fragmentation:Request does not contain a control ID"));
                 break;
             }
             uint16_t ControlId = uint16_t(FragmentRequest[F("id")]);
 
-            if(!FragmentRequest.containsKey(F("offset")))
+            if(!FragmentRequest["offset"].is<JsonVariant>())
             {
                 //Serial.println(F("ERROR:prepareJSONChunk:Fragmentation:Request does not contain a starting offset"));
                 break;
