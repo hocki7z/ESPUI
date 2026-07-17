@@ -34,6 +34,12 @@ void _ESPUIcontrolMgr::RemoveToBeDeletedControls()
             {
                 PreviousControl->next = NextControl;
             }
+            if  ((CurrentControl->control_flags & CONTROL_FLAG_NUMERIC) ||
+                 (CurrentControl->control_flags & CONTROL_FLAG_PCHAR)) 
+            ;
+            else
+             if (CurrentControl->string_value) 
+	      delete CurrentControl->string_value;
             delete CurrentControl;
             CurrentControl = NextControl;
         }
@@ -48,12 +54,12 @@ void _ESPUIcontrolMgr::RemoveToBeDeletedControls()
 #endif // def ESP32
 }
 
-Control* _ESPUIcontrolMgr::getControl(Control::ControlId_t id)
+BasicControl* _ESPUIcontrolMgr::getControl(Control::ControlId_t id)
 {
 #ifdef ESP32
     xSemaphoreTake(ControlsSemaphore, portMAX_DELAY);
 #endif // !def ESP32
-    Control* Response = getControlNoLock(id);
+    BasicControl* Response = getControlNoLock(id);
 #ifdef ESP32
     xSemaphoreGive(ControlsSemaphore);
 #endif // !def ESP32
@@ -63,7 +69,7 @@ Control* _ESPUIcontrolMgr::getControl(Control::ControlId_t id)
 // WARNING: Anytime you walk the chain of controllers, the protection semaphore
 //          MUST be locked. This function assumes that the semaphore is locked
 //          at the time it is called. Make sure YOU locked it :)
-Control* _ESPUIcontrolMgr::getControlNoLock(Control::ControlId_t id)
+BasicControl* _ESPUIcontrolMgr::getControlNoLock(Control::ControlId_t id)
 {
     return getControlObjectNoLock(id);
 } // getControlNoLock
@@ -92,11 +98,51 @@ _ESPUIcontrolMgr::ControlObject_t * _ESPUIcontrolMgr::getControlObjectNoLock(Con
     return Response;
 } // getControlObjectNoLock
 
+BasicControl* _ESPUIcontrolMgr::getFirstOptionId(Control::ControlId_t selector, long value)
+{
+#ifdef ESP32
+    xSemaphoreTake(ControlsSemaphore, portMAX_DELAY);
+#endif // !def ESP32
+    BasicControl* Response = getFirstOptionIdNoLock(selector, value);
+#ifdef ESP32
+    xSemaphoreGive(ControlsSemaphore);
+#endif // !def ESP32
+    return Response;
+}
+
+BasicControl* _ESPUIcontrolMgr::getFirstOptionIdNoLock(Control::ControlId_t selector, long value)
+{
+    return getFirstOptionIdObjectNoLock(selector, value);
+} 
+
+_ESPUIcontrolMgr::ControlObject_t * _ESPUIcontrolMgr::getFirstOptionIdObjectNoLock(Control::ControlId_t selector, long value)
+{
+    ControlObject_t * Response = nullptr;
+    ControlObject_t * CurrentControl = controls;
+
+    while (nullptr != CurrentControl)
+    {
+        if ((CurrentControl->parentControl == selector) && (CurrentControl->type == Control::Type::Option) &&
+            (CurrentControl->control_flags & CONTROL_FLAG_NUMERIC) && (CurrentControl->numeric_value == value))
+        {
+            if (!CurrentControl->ToBeDeleted())
+            {
+                Response = CurrentControl;
+            }
+            break;
+        }
+        CurrentControl = CurrentControl->next;
+    }
+
+    return Response;
+} 
+
+
 bool _ESPUIcontrolMgr::removeControl(Control::ControlId_t id)
 {
     bool Response = false;
 
-    Control* control = getControl(id);
+    BasicControl* control = getControl(id);
     if (control)
     {
         Response = true;
@@ -106,11 +152,45 @@ bool _ESPUIcontrolMgr::removeControl(Control::ControlId_t id)
 #ifdef DEBUG_ESPUI
     else
     {
-        // Serial.println(String("Could not Remove Control ") + String(id));
+        //Serial.println(String("Could not Remove Control ") + String(id));
     }
 #endif // def DEBUG_ESPUI
 
     return Response;
+}
+
+uint16_t _ESPUIcontrolMgr::removeSelectOptions(Control::ControlId_t select_id, Control::ControlId_t skip_id)
+{
+    
+ #ifdef ESP32
+   xSemaphoreTake(ControlsSemaphore, portMAX_DELAY);
+#endif // !def ESP32
+  
+
+  uint16_t Response = 0;
+  ControlObject_t * CurrentControl = controls;
+
+  while (nullptr != CurrentControl)
+    {
+        if ((CurrentControl->parentControl == select_id) &&
+	    (CurrentControl->GetType() == Control::Type::Option) &&
+	     (CurrentControl->GetId() != skip_id))
+        {
+            CurrentControl->ToBeDeleted();
+    	    CurrentControl->setCallback(nullptr);
+            Response++;
+            controlCount--;
+         }
+        CurrentControl = CurrentControl->next;
+    }
+
+
+#ifdef ESP32
+  xSemaphoreGive(ControlsSemaphore);
+#endif // !def ESP32
+  
+
+  return Response;
 }
 
 
@@ -129,9 +209,9 @@ uint32_t _ESPUIcontrolMgr::prepareJSONChunk(uint16_t startindex,
     xSemaphoreTake(ControlsSemaphore, portMAX_DELAY);
 #endif // def ESP32
 
-    // Serial.println(String("prepareJSONChunk: Start.          InUpdateMode: ") + String(InUpdateMode));
-    // Serial.println(String("prepareJSONChunk: Start.            startindex: ") + String(startindex));
-    // Serial.println(String("prepareJSONChunk: Start. FragmentRequestString: '") + FragmentRequestString + "'");
+    //Serial.println(String("prepareJSONChunk: Start.          InUpdateMode: ") + String(InUpdateMode));
+    //Serial.println(String("prepareJSONChunk: Start.            startindex: ") + String(startindex));
+    //Serial.println(String("prepareJSONChunk: Start. FragmentRequestString: '") + FragmentRequestString + "'");
     int elementcount = 0;
     uint32_t MaxMarshaledJsonSize = (!InUpdateMode) ? ESPUI.jsonInitialDocumentSize: ESPUI.jsonUpdateDocumentSize;
     uint32_t EstimatedUsedMarshaledJsonSize = 0;
@@ -147,10 +227,10 @@ uint32_t _ESPUIcontrolMgr::prepareJSONChunk(uint16_t startindex,
 
         if(!emptyString.equals(FragmentRequestString))
         {
-            // Serial.println(F("prepareJSONChunk:Fragmentation:Got Header (1)"));
-            // Serial.println(String("prepareJSONChunk:startindex:                  ") + String(startindex));
-            // Serial.println(String("prepareJSONChunk:currentIndex:                ") + String(currentIndex));
-            // Serial.println(String("prepareJSONChunk:FragmentRequestString:      '") + FragmentRequestString + "'");
+             //Serial.println(F("prepareJSONChunk:Fragmentation:Got Header (1)"));
+             //Serial.println(String("prepareJSONChunk:startindex:                  ") + String(startindex));
+            //Serial.println(String("prepareJSONChunk:currentIndex:                ") + String(currentIndex));
+            //Serial.println(String("prepareJSONChunk:FragmentRequestString:      '") + FragmentRequestString + "'");
 
             // this is actually a fragment or directed update request
             // parse the string we got from the UI and try to update that specific
@@ -160,7 +240,7 @@ uint32_t _ESPUIcontrolMgr::prepareJSONChunk(uint16_t startindex,
             ArduinoJson::detail::sizeofObject(N);
             if(0 >= FragmentRequest.capacity())
             {
-                Serial.println(F("ERROR:prepareJSONChunk:Fragmentation:Could not allocate memory for a fragmentation request. Skipping Response"));
+                //Serial.println(F("ERROR:prepareJSONChunk:Fragmentation:Could not allocate memory for a fragmentation request. Skipping Response"));
                 break;
             }
 */
@@ -168,31 +248,31 @@ uint32_t _ESPUIcontrolMgr::prepareJSONChunk(uint16_t startindex,
             DeserializationError error = deserializeJson(FragmentRequest, FragmentRequestString.substring(FragmentRequestStartOffset));
             if(DeserializationError::Ok != error)
             {
-                Serial.println(F("ERROR:prepareJSONChunk:Fragmentation:Could not extract json from the fragment request"));
+                //Serial.println(F("ERROR:prepareJSONChunk:Fragmentation:Could not extract json from the fragment request"));
                 break;
             }
 
-            if(!FragmentRequest["id"].is<JsonVariant>())
+            if(!FragmentRequest.containsKey(F("id")))
             {
-                Serial.println(F("ERROR:prepareJSONChunk:Fragmentation:Request does not contain a control ID"));
+                //Serial.println(F("ERROR:prepareJSONChunk:Fragmentation:Request does not contain a control ID"));
                 break;
             }
             uint16_t ControlId = uint16_t(FragmentRequest[F("id")]);
 
-            if(!FragmentRequest["offset"].is<JsonVariant>())
+            if(!FragmentRequest.containsKey(F("offset")))
             {
-                Serial.println(F("ERROR:prepareJSONChunk:Fragmentation:Request does not contain a starting offset"));
+                //Serial.println(F("ERROR:prepareJSONChunk:Fragmentation:Request does not contain a starting offset"));
                 break;
             }
             DataOffset = uint16_t(FragmentRequest[F("offset")]);
             CurrentControlObject = getControlObjectNoLock(ControlId);
             if(nullptr == CurrentControlObject)
             {
-                Serial.println(String(F("ERROR:prepareJSONChunk:Fragmentation:Requested control: ")) + String(ControlId) + F(" does not exist"));
+                //Serial.println(String(F("ERROR:prepareJSONChunk:Fragmentation:Requested control: ")) + String(ControlId) + F(" does not exist"));
                 break;
             }
 
-            // Serial.println(F("prepareJSONChunk:Fragmentation:disable the control search operation"));
+            //Serial.println(F("prepareJSONChunk:Fragmentation:disable the control search operation"));
             currentIndex = 1;
             startindex = 0;
             SingleControl = true;
@@ -202,7 +282,7 @@ uint32_t _ESPUIcontrolMgr::prepareJSONChunk(uint16_t startindex,
         while ((startindex > currentIndex) && (nullptr != CurrentControlObject))
         {
             // only count active controls
-            if (!CurrentControlObject->ToBeDeleted())
+            if ((!CurrentControlObject->ToBeDeleted()) && (!CurrentControlObject->SkipSend()))
             {
                 if(InUpdateMode)
                 {
@@ -224,7 +304,7 @@ uint32_t _ESPUIcontrolMgr::prepareJSONChunk(uint16_t startindex,
         // any controls left to be processed?
         if(nullptr == CurrentControlObject)
         {
-            // Serial.println("prepareJSONChunk: No controls to process");
+            //Serial.println("prepareJSONChunk: No controls to process");
             break;
         }
 
@@ -234,9 +314,9 @@ uint32_t _ESPUIcontrolMgr::prepareJSONChunk(uint16_t startindex,
         while (nullptr != CurrentControlObject)
         {
             // skip deleted controls or controls that have not been updated
-            if (CurrentControlObject->ToBeDeleted() && !SingleControl)
+            if ((CurrentControlObject->ToBeDeleted() || CurrentControlObject->SkipSend()) && !SingleControl)
             {
-                // Serial.println(String("prepareJSONChunk: Ignoring Deleted control: ") + String(control->id));
+                // //Serial.println(String("prepareJSONChunk: Ignoring Deleted control: ") + String(Control->id));
                 CurrentControlObject = CurrentControlObject->next;
                 continue;
             }
@@ -255,33 +335,38 @@ uint32_t _ESPUIcontrolMgr::prepareJSONChunk(uint16_t startindex,
                 }
             }
 
-            // Serial.println(String(F("prepareJSONChunk: MaxMarshaledJsonSize: ")) + String(MaxMarshaledJsonSize));
-            // Serial.println(String(F("prepareJSONChunk: Cur EstimatedUsedMarshaledJsonSize: ")) + String(EstimatedUsedMarshaledJsonSize));
+            //Serial.println(String(F("prepareJSONChunk: MaxMarshaledJsonSize: ")) + String(MaxMarshaledJsonSize));
+            //Serial.println(String(F("prepareJSONChunk: Cur EstimatedUsedMarshaledJsonSize: ")) + String(EstimatedUsedMarshaledJsonSize));
 
             JsonObject item = AllocateJsonObject(items);
             elementcount++;
             uint32_t RemainingSpace = (MaxMarshaledJsonSize - EstimatedUsedMarshaledJsonSize) - 100;
-            // Serial.println(String(F("prepareJSONChunk: RemainingSpace: ")) + String(RemainingSpace));
+            //Serial.println(String(F("prepareJSONChunk: RemainingSpace: ")) + String(RemainingSpace));
             uint32_t SpaceUsedByMarshaledControl = 0;
             bool ControlIsFragmented = CurrentControlObject->MarshalControl(item,
                                                                InUpdateMode,
                                                                DataOffset,
                                                                RemainingSpace,
                                                                SpaceUsedByMarshaledControl);
-            // Serial.println(String(F("prepareJSONChunk: SpaceUsedByMarshaledControl: ")) + String(SpaceUsedByMarshaledControl));
+            //Serial.println(String(F("prepareJSONChunk: SpaceUsedByMarshaledControl: ")) + String(SpaceUsedByMarshaledControl));
             EstimatedUsedMarshaledJsonSize += SpaceUsedByMarshaledControl;
-            // Serial.println(String(F("prepareJSONChunk: New EstimatedUsedMarshaledJsonSize: ")) + String(EstimatedUsedMarshaledJsonSize));
-            // Serial.println(String(F("prepareJSONChunk:                ControlIsFragmented: ")) + String(ControlIsFragmented));
+            //Serial.println(String(F("prepareJSONChunk: New EstimatedUsedMarshaledJsonSize: ")) + String(EstimatedUsedMarshaledJsonSize));
+            //Serial.println(String(F("prepareJSONChunk:                ControlIsFragmented: ")) + String(ControlIsFragmented));
 
             // did the control get added to the doc?
+            /*if (measureJson(rootDoc) > MaxMarshaledJsonSize) {
+		CurrentControlObject = nullptr;
+		Serial.printf("measureJson %u, MaxMarshaledJsonSize %u\n\r", measureJson(rootDoc), MaxMarshaledJsonSize);
+	    }*/
+
             if (0 == SpaceUsedByMarshaledControl ||
                 (ESPUI.jsonChunkNumberMax > 0 && (elementcount % ESPUI.jsonChunkNumberMax) == 0))
             {
-                // Serial.println( String("prepareJSONChunk: too much data in the message. Remove the last entry"));
+                //Serial.println( String("prepareJSONChunk: too much data in the message. Remove the last entry"));
                 if (1 == elementcount)
                 {
-                    // Serial.println(String(F("prepareJSONChunk: Control ")) + String(control->id) + F(" is too large to be sent to the browser."));
-                    // Serial.println(String(F("ERROR: prepareJSONChunk: value: ")) + control->value);
+                    //Serial.println(String(F("prepareJSONChunk: Control "))  + F(" is too large to be sent to the browser."));
+                    ////Serial.println(String(F("ERROR: prepareJSONChunk: value: ")) + control->value);
                     rootDoc.clear();
                     item = AllocateJsonObject(items);
                     CurrentControlObject->MarshalErrorMessage(item);
@@ -289,8 +374,8 @@ uint32_t _ESPUIcontrolMgr::prepareJSONChunk(uint16_t startindex,
                 }
                 else
                 {
-                    // Serial.println(String("prepareJSONChunk: Defering control: ") + String(control->id));
-                    // Serial.println(String("prepareJSONChunk: elementcount: ") + String(elementcount));
+                    ////Serial.println(String("prepareJSONChunk: Defering control: ") + String(Control->id));
+                    //Serial.println(String("prepareJSONChunk: elementcount: ") + String(elementcount));
 
                     items.remove(elementcount);
                     --elementcount;
@@ -302,12 +387,14 @@ uint32_t _ESPUIcontrolMgr::prepareJSONChunk(uint16_t startindex,
                      (ControlIsFragmented) ||
                      (MaxMarshaledJsonSize < (EstimatedUsedMarshaledJsonSize + 100)))
             {
-                // Serial.println("prepareJSONChunk: Doc is Full, Fragmented Control or Single Control. exit loop");
+                //Serial.println("prepareJSONChunk: Doc is Full, Fragmented Control or Single Control. exit loop");
                 CurrentControlObject = nullptr;
             }
             else
             {
-                // Serial.println("prepareJSONChunk: Next Control");
+                //Serial.println("prepareJSONChunk: Next Control");
+		//Serial.printf("measureJson %u, MaxMarshaledJsonSize %u\n\r", measureJson(rootDoc), MaxMarshaledJsonSize);
+
                 CurrentControlObject = CurrentControlObject->next;
             }
         } // end while (control != nullptr)
@@ -318,7 +405,7 @@ uint32_t _ESPUIcontrolMgr::prepareJSONChunk(uint16_t startindex,
     xSemaphoreGive(ControlsSemaphore);
 #endif // def ESP32
 
-    // Serial.println(String("prepareJSONChunk: END: elementcount: ") + String(elementcount));
+    //Serial.println(String("prepareJSONChunk: END: elementcount: ") + String(elementcount));
     return elementcount;
 }
 
@@ -329,10 +416,12 @@ Control::ControlId_t _ESPUIcontrolMgr::addControl(Control::Type type,
                                                   Control::Color color,
                                                   Control::ControlId_t parentControl,
                                                   bool visible,
-                                                  std::function<void(Control*, int)> callback)
+                                                  void (*callback)(BasicControl*, int, void*),
+ 				    		  void *userData)
 {
     // Create a Wrapper and a control
-    ControlObject_t * NewControlObject  = new ControlObject_t(++idCounter, type, label, callback, value, color, visible, parentControl);
+
+    Control * NewControlObject  = new Control(++idCounter, type, label, callback, value, color, visible, parentControl, userData);
     NewControlObject->next = nullptr;
 
 #ifdef ESP32
@@ -362,10 +451,119 @@ Control::ControlId_t _ESPUIcontrolMgr::addControl(Control::Type type,
     return NewControlObject->GetId();
 }
 
-_ESPUIcontrolMgr::ControlObject_t::ControlObject_t(Control::ControlId_t id, Control::Type type, const char* label, std::function<void(Control*, int)> callback,
+
+Control::ControlId_t _ESPUIcontrolMgr::addControl(Control::Type type,
+                                                  const char* label,
+                                                  long value,
+                                                  Control::Color color,
+                                                  Control::ControlId_t parentControl,
+                                                  bool visible,
+                                                  void (*callback)(BasicControl*, int, void*),
+ 				    		  void *userData)
+{
+    // Create a Wrapper and a control
+
+    BasicControl * NewControlObject = nullptr;
+
+    if (type == Control::Type::Option)
+      NewControlObject = new BasicControl(++idCounter, type, label, value, color, visible, parentControl);
+    else
+    if (type == Control::Type::Label)
+      NewControlObject = new LabelControl(++idCounter, type, label, value, color, visible, parentControl);
+    else
+      NewControlObject = new Control(++idCounter, type, label, callback, value, color, visible, parentControl, userData);
+
+//log_i("long %u, %s", type, label);
+
+    NewControlObject->next = nullptr;
+
+#ifdef ESP32
+    xSemaphoreTake(ControlsSemaphore, portMAX_DELAY);
+#endif // def ESP32
+
+    if (controls == nullptr)
+    {
+        controls = NewControlObject;
+    }
+    else
+    {
+        ControlObject_t * iterator = controls;
+        while (iterator->next != nullptr)
+        {
+            iterator = iterator->next;
+        }
+        iterator->next = NewControlObject;
+    }
+
+    controlCount++;
+
+#ifdef ESP32
+    xSemaphoreGive(ControlsSemaphore);
+#endif // def ESP32
+
+    return NewControlObject->GetId();
+}
+
+Control::ControlId_t _ESPUIcontrolMgr::addControl(Control::Type type,
+                                                  const char* label,
+                                                  const char* value,
+                                                  Control::Color color,
+                                                  Control::ControlId_t parentControl,
+                                                  bool visible,
+                                                  void (*callback)(BasicControl*, int, void*),
+ 				    		  void *userData)
+{
+    // Create a Wrapper and a control
+
+    Control * NewControlObject  = new Control(++idCounter, type, label, callback, value, color, visible, parentControl, userData);
+//log_i("pchar %u, %s", type, label);
+
+    NewControlObject->next = nullptr;
+
+#ifdef ESP32
+    xSemaphoreTake(ControlsSemaphore, portMAX_DELAY);
+#endif // def ESP32
+
+    if (controls == nullptr)
+    {
+        controls = NewControlObject;
+    }
+    else
+    {
+        ControlObject_t * iterator = controls;
+        while (iterator->next != nullptr)
+        {
+            iterator = iterator->next;
+        }
+        iterator->next = NewControlObject;
+    }
+
+    controlCount++;
+
+#ifdef ESP32
+    xSemaphoreGive(ControlsSemaphore);
+#endif // def ESP32
+
+    return NewControlObject->GetId();
+}
+
+/*
+_ESPUIcontrolMgr::ControlObject_t::ControlObject_t(Control::ControlId_t id, Control::Type type, const char* label, void (*callback)(BasicControl*, int),
     const String& value, Control::Color color, bool visible, ControlId_t parentControl)
     : Control(id, type, label, callback, value, color, visible, parentControl)
 {}
+
+
+_ESPUIcontrolMgr::ControlObject_t::ControlObject_t(Control::ControlId_t id, Control::Type type, const char* label, void (*callback)(BasicControl*, int),
+    long value, Control::Color color, bool visible, ControlId_t parentControl)
+    : Control(id, type, label, callback, value, color, visible, parentControl)
+{}
+
+
+_ESPUIcontrolMgr::ControlObject_t::ControlObject_t(Control::ControlId_t id, Control::Type type, const char* label, void (*callback)(BasicControl*, int),
+    const char* value, Control::Color color, bool visible, ControlId_t parentControl)
+    : Control(id, type, label, callback, value, color, visible, parentControl)
+{}*/
 
 // Instantiate the singleton
 _ESPUIcontrolMgr ESPUIcontrolMgr;

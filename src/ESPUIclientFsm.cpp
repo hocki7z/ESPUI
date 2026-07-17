@@ -60,16 +60,17 @@ bool fsm_EspuiClient_state_Idle::NotifyClient()
 
 void fsm_EspuiClient_state_Idle::ProcessAck(uint16_t ControlIndex, String FragmentRequestString)
 {
+    Serial.println("ProcessAck");
     if(!emptyString.equals(FragmentRequestString))
     {
-        // Serial.println(F("fsm_EspuiClient_state_Idle::ProcessAck:Fragmentation:Got fragment Header"));
+        //Serial.println(F("fsm_EspuiClient_state_Idle::ProcessAck:Fragmentation:Got fragment Header"));
         Parent->SendControlsToClient(ControlIndex, ClientUpdateType_t::UpdateNeeded, FragmentRequestString);
     }
     else
     {
         // This is an unexpected request for control data from the browser
         // treat it as if it was a rebuild operation
-        // Serial.println(F("fsm_EspuiClient_state_Idle: ProcessAck:Error: Rebuild"));
+        //Serial.println(F("fsm_EspuiClient_state_Idle: ProcessAck:Error: Rebuild"));
         Parent->NotifyClient(ClientUpdateType_t::RebuildNeeded);
     }
 }
@@ -113,7 +114,7 @@ bool fsm_EspuiClient_state_Rebuilding::NotifyClient()
 
 void fsm_EspuiClient_state_Rebuilding::ProcessAck(uint16_t ControlIndex, String FragmentRequest)
 {
-    // Serial.println(F("fsm_EspuiClient_state_Rebuilding: ProcessAck"));
+    //Serial.println(F("fsm_EspuiClient_state_Rebuilding: ProcessAck"));
     if(Parent->SendControlsToClient(ControlIndex, ClientUpdateType_t::RebuildNeeded, FragmentRequest))
     {
         // No more data to send. Go back to idle or start next request

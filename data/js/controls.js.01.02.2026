@@ -487,24 +487,9 @@ function start() {
                 break;
 
             case UI_OPTION:
-               
                 if (data.parentControl) {
                     var parent = $("#select" + data.parentControl);
-		    if (data.value == "-3") 
-                     break;
-
-                    if (data.value == "-2") 
-		     parent.append(
-                        "<option id='option" +
-                        data.id +
-                        "' value='" +
-                        data.value +
-                        "' " + "hidden>" +
-                        data.label +
-                        "</option>"
-                     );
-                   else
-                   parent.append(
+                    parent.append(
                         "<option id='option" +
                         data.id +
                         "' value='" +
@@ -516,59 +501,6 @@ function start() {
                         "</option>"
                     );
                 }
-                if (data.hasOwnProperty('secondParent')) {
-                
-                  var parentB = $("#select" + data.secondParent);
-                  if (data.value == "-2") 
-		     parentB.append(
-                        "<option id='optionB" +
-                        data.id +
-                        "' value='" +
-                        data.value +
-                        "' " + "hidden>" +
-                        data.label +
-                        "</option>"
-                     );
-                   else
-                   parentB.append(
-                        "<option id='optionB" +
-                        data.id +
-                        "' value='" +
-                        data.value +
-                        "' " +
-                        data.selected +
-                        ">" +
-                        data.label +
-                        "</option>"
-                    );
-                }
-		if (data.hasOwnProperty('thirdParent')) {
-                
-                  var parentC = $("#select" + data.thirdParent);
-                  if (data.value == "-2") 
-		     parentC.append(
-                        "<option id='optionC" +
-                        data.id +
-                        "' value='" +
-                        data.value +
-                        "' " + "hidden>" +
-                        data.label +
-                        "</option>"
-                     );
-                   else
-                   parentC.append(
-                        "<option id='optionC" +
-                        data.id +
-                        "' value='" +
-                        data.value +
-                        "' " +
-                        data.selected +
-                        ">" +
-                        data.label +
-                        "</option>"
-                    );
-                }
-                  
                 break;
 
             case UI_MIN:
@@ -689,171 +621,10 @@ function start() {
                 break;
 
             case UPDATE_SELECT:
-                //var select = $("#select" + data.id);
-                //if (Number(data.value) > -2)
                 $("#select" + data.id).val(data.value);
-                
                 if (data.hasOwnProperty('elementStyle')) {
                     $("#select" + data.id).attr("style", data.elementStyle);
                 }
-                break;
-            
-            case UPDATE_OPTION:
-                //console.log(data.id);
-                //console.log(data.label);
-                //console.log(data.value);
-                
-                
-                var parent = $("#select" + data.parentControl);
-                var option = $("#option" + data.id);
-
-                if (data.hasOwnProperty('secondParent')) {
-                
-                  var parentB = $("#select" + data.secondParent);
-                  var optionB = $("#optionB" + data.id);
-                  //console.log("has secondParent");
-                  //console.log(optionB.length);
-
-		  if (optionB.length > 0) {
-                  
-		  //console.log("option present");
-                  
-                  if (data.value == "-2")
-                    optionB.remove();
-                  
-                  else {
-                   
-                   optionB.val(data.value);
-                   optionB.text(data.label);
-                  }
-                }
-                else {
-                  
-                  //console.log("option absent");
-                  
-                  if (Number(data.value) > -2)
-		    parentB.append(
-                         "<option id='optionB" +
-                         data.id +
-                         "' value='" +
-                         data.value +
-                         "' " + ">" +
-                         data.label +
-                         "</option>"
-                     );
-                }
-                }
-		if (data.hasOwnProperty('thirdParent')) {
-                
-                  var parentC = $("#select" + data.thirdParent);
-                  var optionC = $("#optionC" + data.id);
-                  //console.log("has secondParent");
-                  //console.log(optionB.length);
-
-		  if (optionC.length > 0) {
-                  
-		  //console.log("option present");
-                  
-                  if (data.value == "-2")
-                    optionC.remove();
-                  
-                  else {
-                   
-                   optionC.val(data.value);
-                   optionC.text(data.label);
-                  }
-                }
-                else {
-                  
-                  //console.log("option absent");
-                  
-                  if (Number(data.value) > -2)
-		    parentC.append(
-                         "<option id='optionC" +
-                         data.id +
-                         "' value='" +
-                         data.value +
-                         "' " + ">" +
-                         data.label +
-                         "</option>"
-                     );
-                }
-                }
-                //console.log(option.length);
-                //console.log(option.html.length);
-                
-		if (option.length > 0) {
-                  
-		  //console.log("option present");
-                  
-                  if (data.value == "-2")
-                    option.remove();
-                  
-                  else {
-                   
-                   option.val(data.value);
-                   option.text(data.label);
-                  }
-                }
-                else {
-                  
-                  //console.log("option absent");
-                  
-                  if (Number(data.value) > -2)
-		    parent.append(
-                         "<option id='option" +
-                         data.id +
-                         "' value='" +
-                         data.value +
-                         "' " + ">" +
-                         data.label +
-                         "</option>"
-                     );
-                }
-		/*if ($("#option" + data.id).length)
-                  console.log("option present");
-                else 
-                  console.log("option absent");*/
-
-
-             
-             	/*if (Number(data.value) >= -1) {
-
-		 if (data.parentControl) {
-                    var parent = $("#select" + data.parentControl);
-                    
-		    parent.append(
-                        "<option id='option" +
-                        data.id +
-                        "' value='" +
-                        data.value +
-                        "' " + ">" +
-                        data.label +
-                        "</option>"
-                    );}
-  
-
-		}
-
-                    var option = $("#option" + data.id);
-		    option.remove();
-
-		              */
-                    //$("#option" + data.id).attr("hidden", true);
-                //}
-                //else {
-                  //console.log("showing option");
-                  //$("#option" + data.id).removeAttr("hidden");
-                //}
-                //$("#option" + data.id).val(data.value);
-                //$("#option" + data.id).text(data.label);
-                /*if (data.hasOwnProperty('visible')) {
-		console.log("has visible");
-                
-                  if (data['visible'])
-                    $("#option" + data.id).removeAttr("hidden");
-                  else $("#option" + data.id).attr("hidden", true);
-                }*/
                 break;
 
             case UPDATE_BUTTON:
@@ -976,7 +747,6 @@ function start() {
 
             default:
                 console.error("Unknown type or event");
-                 console.error(data.type);
                 break;
         }
 
@@ -1122,7 +892,6 @@ function buttonclick(number, isdown) {
     if ($("#btn" + number).prop("disabled")) {
         return;
     }
-    $("#btn" + number).focus();
     if (isdown) websock.send("bdown:" + number);
     else websock.send("bup:" + number);
 }
@@ -1298,10 +1067,10 @@ var elementHTML = function (data) {
                 data.value + "</span></div>";
         case UI_NUMBER:
             return "<input style='color:black; " + data.elementStyle + "' id='num" + id +
-                "' type='number' value='" + data.value + "' oninput='numberchange(" + id + ")' />";
+                "' type='number' value='" + data.value + "' onchange='numberchange(" + id + ")' />";
         case UI_TEXT_INPUT:
             return "<input " + inputType + "style='color:black; " + data.elementStyle + "' id='text" + id +
-                "' value='" + data.value + "' oninput='textchange(" + id + ")' />";
+                "' value='" + data.value + "' onchange='textchange(" + id + ")' />";
         case UI_SELECT:
             return "<select style='color:black; " + data.elementStyle + "' id='select" + id +
                 "' onchange='selectchange(" + id + ")' />";

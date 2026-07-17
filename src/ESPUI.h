@@ -1,7 +1,7 @@
 #pragma once
 
 // comment out to turn off debug output
-// #define DEBUG_ESPUI true
+#define DEBUG_ESPUI true
 #define WS_AUTHENTICATION false
 
 #include <Arduino.h>
@@ -68,6 +68,22 @@ enum MessageTypes : uint8_t
 #define UI_EXTEND_GUI   MessageTypes::ExtendGUI
 #define UI_RELOAD       MessageTypes::Reload
 
+#define CONTROL_FLAG_ENABLED	(1 << 0)
+#define CONTROL_FLAG_VISIBLE	(1 << 1)
+#define CONTROL_FLAG_WIDE 	(1 << 2)
+#define CONTROL_FLAG_VERTICAL 	(1 << 3)
+#define CONTROL_FLAG_DELETED    (1 << 4)
+#define CONTROL_FLAG_NUMERIC    (1 << 5)
+#define CONTROL_FLAG_PCHAR      (1 << 6)
+#define CONTROL_FLAG_STRING     (1 << 7)
+
+
+#define CONTROL_FLAG_OPTION_UPDATE (1<<13)
+#define CONTROL_FLAG_OPTION_ADD    (1<<14)
+#define CONTROL_FLAG_OPTION_REMOVE (1<<15)
+
+
+
 // Values
 #define B_DOWN -1
 #define B_UP 1
@@ -105,12 +121,12 @@ public:
     ESPUIClass()
     {
 	}
-    unsigned int jsonUpdateDocumentSize = 8000;
+    unsigned int jsonUpdateDocumentSize = 8192;
 #ifdef ESP8266
     unsigned int jsonInitialDocumentSize = 2000;
     unsigned int jsonChunkNumberMax = 5;
 #else
-    unsigned int jsonInitialDocumentSize = 8000;
+    unsigned int jsonInitialDocumentSize = 8192;
     unsigned int jsonChunkNumberMax = 4;
 #endif
     bool sliderContinuous = false;
@@ -131,22 +147,38 @@ public:
     void writeFile(const char* path, const char* data);
 
     Control::ControlId_t addControl(Control::Type type, const char* label);
+
     Control::ControlId_t addControl(Control::Type type, const char* label, const String& value);
+    Control::ControlId_t addControl(Control::Type type, const char* label, const char* value);
+    Control::ControlId_t addControl(Control::Type type, const char* label, long value);
+
     Control::ControlId_t addControl(Control::Type type, const char* label, const String& value, Control::Color color);
+    Control::ControlId_t addControl(Control::Type type, const char* label, const char* value, Control::Color color);
+    Control::ControlId_t addControl(Control::Type type, const char* label, long value, Control::Color color);
+
     Control::ControlId_t addControl(Control::Type type, const char* label, const String& value, Control::Color color, Control::ControlId_t parentControlId);
-    Control::ControlId_t addControl(Control::Type type, const char* label, const String& value, Control::Color color, Control::ControlId_t parentControlId, std::function<void(Control*, int)> callback);
+    Control::ControlId_t addControl(Control::Type type, const char* label, long value, Control::Color color, Control::ControlId_t parentControlId);
+    Control::ControlId_t addControl(Control::Type type, const char* label, const char *value, Control::Color color, Control::ControlId_t parentControlId);
+  
+    Control::ControlId_t addControl(Control::Type type, const char* label, const String& value, Control::Color color, Control::ControlId_t parentControlId, void (*callback)(BasicControl*, int, void*));
+    Control::ControlId_t addControl(Control::Type type, const char* label, long value, Control::Color color, Control::ControlId_t parentControlId, void (*callback)(BasicControl*, int, void*));
+    Control::ControlId_t addControl(Control::Type type, const char* label, const char *value, Control::Color color, Control::ControlId_t parentControlId, void (*callback)(BasicControl*, int, void*));
+
+
 
     bool removeControl(Control::ControlId_t id, bool force_rebuild_ui = false);
+    uint16_t removeSelectOptions(Control::ControlId_t select_id,  Control::ControlId_t skip_id = 0xFFFF, bool force_rebuild_ui = false);
 
+    
     // create Elements
     // Create Event Button
-    Control::ControlId_t button(const char* label, std::function<void(Control*, int)> callback, Control::Color color, const String& value = "");
-    Control::ControlId_t switcher(const char* label, std::function<void(Control*, int)> callback, Control::Color color, bool startState = false); // Create Toggle Button
-    Control::ControlId_t pad(const char* label, std::function<void(Control*, int)> callback, Control::Color color); // Create Pad Control
-    Control::ControlId_t padWithCenter(const char* label, std::function<void(Control*, int)> callback, Control::Color color); // Create Pad Control with Centerbutton
-    Control::ControlId_t slider(const char* label, std::function<void(Control*, int)> callback, Control::Color color, int value, int min = 0, int max = 100); // Create Slider Control
-    Control::ControlId_t number(const char* label, std::function<void(Control*, int)> callback, Control::Color color, int value, int min = 0, int max = 100); // Create a Number Input Control
-    Control::ControlId_t text(const char* label, std::function<void(Control*, int)> callback, Control::Color color, const String& value = ""); // Create a Text Input Control
+    /*Control::ControlId_t button(const char* label, void (*callback)(BasicControl*, int, void*), Control::Color color, const String& value = "");
+    Control::ControlId_t switcher(const char* label, void (*callback)(BasicControl*, int, void*), Control::Color color, bool startState = false); // Create Toggle Button
+    Control::ControlId_t pad(const char* label, void (*callback)(BasicControl*, int, void*), Control::Color color); // Create Pad Control
+    Control::ControlId_t padWithCenter(const char* label, void (*callback)(BasicControl*, int, void*), Control::Color color); // Create Pad Control with Centerbutton
+    Control::ControlId_t slider(const char* label, void (*callback)(BasicControl*, int, void*), Control::Color color, int value, int min = 0, int max = 100); // Create Slider Control
+    Control::ControlId_t number(const char* label, void (*callback)(BasicControl*, int, void*), Control::Color color, int value, int min = 0, int max = 100); // Create a Number Input Control
+    Control::ControlId_t text(const char* label, void (*callback)(BasicControl*, int, void*), Control::Color color, const String& value = ""); // Create a Text Input Control
 
     // Output only
     Control::ControlId_t label(const char* label, Control::Color color,
@@ -158,46 +190,73 @@ public:
     Control::ControlId_t fileDisplay(const char* label, Control::Color color, String filename);
 
     // Input only
-    Control::ControlId_t accelerometer(const char* label, std::function<void(Control*, int)> callback, Control::Color color);
+    Control::ControlId_t accelerometer(const char* label, void (*callback)(BasicControl*, int, void*), Control::Color color);*/
 
     // Update Elements
 
-    Control* getControl(Control::ControlId_t id);
-    Control* getControlNoLock(Control::ControlId_t id);
+    BasicControl* getControl(Control::ControlId_t id);
+    BasicControl* getControlNoLock(Control::ControlId_t id);
+    BasicControl* getFirstOptionId(Control::ControlId_t selector, long value);
 
     // Update Elements
     void updateControlValue(Control::ControlId_t id, const String& value, int clientId = -1);
-    void updateControlValue(Control* control, const String& value, int clientId = -1);
+    void updateControlValue(BasicControl* control, const String& value, int clientId = -1);
+
+    void updateControlValue(Control::ControlId_t id, long value, int clientId = -1);
+    void updateControlValue(BasicControl* control, long value, int clientId = -1);
+
+    void updateControlValue(Control::ControlId_t id, const char* value, int clientId = -1);
+    void updateControlValue(BasicControl* control, const char* value, int clientId = -1);
+
 
     void updateControlLabel(Control::ControlId_t control, const char * value, int clientId = -1);
-    void updateControlLabel(Control* control, const char * value, int clientId = -1);
+    void updateControlLabel(BasicControl* control, const char * value, int clientId = -1);
+
+    void updateOption(
+      Control::ControlId_t control, const char * label, long value, long dynamic_option_id, 
+      uint8_t operation);
 
     void updateControl(Control::ControlId_t id, int clientId = -1);
-    void updateControl(Control* control, int clientId = -1);
+    void updateControl(BasicControl* control, int clientId = -1);
 
     void print(Control::ControlId_t id, const String& value);
     void updateLabel(Control::ControlId_t id, const String& value);
+    void updateLabel(Control::ControlId_t id, const char* value);
     void updateButton(Control::ControlId_t id, const String& value);
     void updateSwitcher(Control::ControlId_t id, bool nValue, int clientId = -1);
     void updateSlider(Control::ControlId_t id, int nValue, int clientId = -1);
     void updateNumber(Control::ControlId_t id, int nValue, int clientId = -1);
     void updateText(Control::ControlId_t id, const String& nValue, int clientId = -1);
-    void updateSelect(Control::ControlId_t id, const String& nValue, int clientId = -1);
+    //void updateSelect(Control::ControlId_t id, const String& nValue, int clientId = -1);
+    void updateSelect(Control::ControlId_t id, int nValue, int clientId = -1);
     void updateGauge(Control::ControlId_t id, int number, int clientId);
     void updateTime(Control::ControlId_t id, int clientId = -1);
 
     void clearGraph(Control::ControlId_t id, int clientId = -1);
     void addGraphPoint(Control::ControlId_t id, int nValue, int clientId = -1);
 
-    void setPanelStyle(Control::ControlId_t id, const String& style, int clientId = -1);
-    void setElementStyle(Control::ControlId_t id, const String& style, int clientId = -1);
-    void setInputType(Control::ControlId_t id, const String& type, int clientId = -1);
+    //void setPanelStyle(Control::ControlId_t id, const String& style, int clientId = -1);
+void setPanelStyle(Control::ControlId_t id, const char *style, int clientId = -1);
+
+    void setElementStyle(Control::ControlId_t id, const char* style, int clientId = -1);
+    void setInputType(Control::ControlId_t id, const char *type, int clientId = -1);
 
     void setPanelWide(Control::ControlId_t id, bool wide);
     void setVertical(Control::ControlId_t id, bool vert = true);
     void setEnabled(Control::ControlId_t id, bool enabled = true, int clientId = -1);
 
     void updateVisibility(Control::ControlId_t id, bool visibility, int clientId = -1);
+
+    // Set optional user-defined JavaScript to be included in the UI.
+    // js: JavaScript code as a C-string. Must remain valid for the lifetime of the ESPUIClass instance.
+    // This is intentionally not a String to avoid dynamic memory allocation.
+    void setCustomJS(const char* js);
+
+    // Set optional user-defined CSS to be included in the UI.
+    // css: CSS code as a C-string. Must remain valid for the lifetime of the ESPUIClass instance.
+    // This is intentionally not a String to avoid dynamic memory allocation.
+    void setCustomCSS(const char* css);
+
 
     // Variables
     const char* ui_title = "ESPUI"; // Store UI Title and Header Name
@@ -207,42 +266,43 @@ public:
     Verbosity verbosity = Verbosity::Quiet;
     uint32_t  GetNextControlChangeId();
     // emulate former extended callback API by using an intermediate lambda (no deprecation)
-    Control::ControlId_t addControl(Control::Type type, const char* label, const String& value, Control::Color color, Control::ControlId_t parentControl, std::function<void(Control*, int, void*)> callback, void* userData)
-    {
-        return addControl(type, label, value, color, parentControl, [callback, userData](Control* sender, int type){ callback(sender, type, userData); });
-    }
-    Control::ControlId_t button(const char* label, std::function<void(Control*, int, void*)> callback, Control::Color color, const String& value, void* userData)
+    Control::ControlId_t addControl(Control::Type type, const char* label, const String& value, Control::Color color, Control::ControlId_t parentControl, void (*callback)(BasicControl*, int, void*), void* userData);
+
+Control::ControlId_t addControl(Control::Type type, const char* label, long value, Control::Color color, Control::ControlId_t parentControl, void (*callback)(BasicControl*, int, void*), void* userData);
+
+Control::ControlId_t addControl(Control::Type type, const char* label, const char* value, Control::Color color, Control::ControlId_t parentControl, void (*callback)(BasicControl*, int, void*), void* userData);
+    /*Control::ControlId_t button(const char* label, void (*callback)(BasicControl*, int, void*), Control::Color color, const String& value, void* userData)
     {
         return button(label, [callback, userData](Control* sender, int type){ callback(sender, type, userData); }, color, value);
     }
-    Control::ControlId_t switcher(const char* label, std::function<void(Control*, int, void*)> callback, Control::Color color, bool startState, void* userData)
+    Control::ControlId_t switcher(const char* label, void (*callback)(BasicControl*, int, void*), Control::Color color, bool startState, void* userData)
     {
         return switcher(label, [callback, userData](Control* sender, int type){ callback(sender, type, userData); }, color, startState);
     }
-    Control::ControlId_t pad(const char* label, std::function<void(Control*, int, void*)> callback, Control::Color color, void* userData)
+    Control::ControlId_t pad(const char* label, void (*callback)(BasicControl*, int, void*), Control::Color color, void* userData)
     {
         return pad(label, [callback, userData](Control* sender, int type){ callback(sender, type, userData); }, color);
     }
-    Control::ControlId_t padWithCenter(const char* label, std::function<void(Control*, int, void*)> callback, Control::Color color, void* userData)
+    Control::ControlId_t padWithCenter(const char* label, void (*callback)(BasicControl*, int, void*), Control::Color color, void* userData)
     {
         return padWithCenter(label, [callback, userData](Control* sender, int type){ callback(sender, type, userData); }, color);
     }
-    Control::ControlId_t slider(const char* label, std::function<void(Control*, int, void*)> callback, Control::Color color, int value, int min, int max, void* userData)
+    Control::ControlId_t slider(const char* label, void (*callback)(BasicControl*, int, void*), Control::Color color, int value, int min, int max, void* userData)
     {
         return slider(label, [callback, userData](Control* sender, int type){ callback(sender, type, userData); }, color, value, min, max);
     }
-    Control::ControlId_t number(const char* label, std::function<void(Control*, int, void*)> callback, Control::Color color, int value, int min, int max, void* userData)
+    Control::ControlId_t number(const char* label, void (*callback)(BasicControl*, int, void*), Control::Color color, int value, int min, int max, void* userData)
     {
         return number(label, [callback, userData](Control* sender, int type){ callback(sender, type, userData); }, color, value, min, max);
     }
-    Control::ControlId_t text(const char* label, std::function<void(Control*, int, void*)> callback, Control::Color color, const String& value, void* userData)
+    Control::ControlId_t text(const char* label, void (*callback)(BasicControl*, int, void*), Control::Color color, const String& value, void* userData)
     {
         return text(label, [callback, userData](Control* sender, int type){ callback(sender, type, userData); } , color, value);
     }
-    Control::ControlId_t accelerometer(const char* label, std::function<void(Control*, int, void*)> callback, Control::Color color, void* userData)
+    Control::ControlId_t accelerometer(const char* label, void (*callback)(BasicControl*, int, void*), Control::Color color, void* userData)
     {
         return accelerometer(label, [callback, userData](Control* sender, int type){ callback(sender, type, userData); }, color);
-    }
+    }*/
 
     AsyncWebServer* WebServer() {return server;}
     AsyncWebSocket* WebSocket() {return ws;}
