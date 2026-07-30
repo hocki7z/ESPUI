@@ -119,6 +119,10 @@
 }
 
 /* Details component */
+details.card {
+  min-height: unset;
+}
+
 details {
   text-align: left;
   width: 100%;
@@ -149,6 +153,18 @@ details {
 
 details[open] > .details-summary::before {
   transform: rotate(90deg);
+}
+
+details > .details-hr {
+  display: none;
+  border: none;
+  height: 2px;
+  background-color: rgba(255,255,255,0.3);
+  margin: 4px 0 6px;
+}
+
+details[open] > .details-hr {
+  display: block;
 }
 
 .details-content {
