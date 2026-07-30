@@ -121,6 +121,7 @@
 /* Details component */
 details.card {
   min-height: unset;
+  border-bottom: none;
 }
 
 details {
