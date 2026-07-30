@@ -1233,8 +1233,8 @@ var addToHTML = function (data) {
             case UI_DETAILS: {
                 var dsStyle = (data.hasOwnProperty('panelStyle') ? data.panelStyle + " " : "") +
                     (data.hasOwnProperty('elementStyle') ? data.elementStyle : "");
-                dsStyle = dsStyle.trim();
-                html = "<details id='id" + data.id + "'" + (dsStyle ? " style='" + dsStyle + "'" : "") +
+                dsStyle = dsStyle.trim() + " border-bottom: none; min-height: unset;";
+                html = "<details id='id" + data.id + "' style='" + dsStyle + "'" +
                     " class='two columns " + panelwide + " card tcenter " + colorClass(data.color) + "'>" +
                     elementHTML(data) + "</details>";
                 break;
