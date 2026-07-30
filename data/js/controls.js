@@ -660,7 +660,7 @@ function start() {
             case UPDATE_DETAILS:
                 $("#dl" + data.id).html(data.value);
                 if (data.hasOwnProperty('elementStyle')) {
-                    $("#details" + data.id).attr("style", data.elementStyle);
+                    $("#id" + data.id).attr("style", data.elementStyle);
                 }
                 break;
 
@@ -1230,12 +1230,15 @@ var addToHTML = function (data) {
                     "</div>";
                 break;
 
-            case UI_DETAILS:
-                html = "<div id='id" + data.id + "' " + panelStyle + " class='two columns " + panelwide + " card tcenter " +
-                    colorClass(data.color) + "'>" +
-                    elementHTML(data) +
-                    "</div>";
+            case UI_DETAILS: {
+                var dsStyle = (data.hasOwnProperty('panelStyle') ? data.panelStyle + " " : "") +
+                    (data.hasOwnProperty('elementStyle') ? data.elementStyle : "");
+                dsStyle = dsStyle.trim();
+                html = "<details id='id" + data.id + "'" + (dsStyle ? " style='" + dsStyle + "'" : "") +
+                    " class='two columns " + panelwide + " card tcenter " + colorClass(data.color) + "'>" +
+                    elementHTML(data) + "</details>";
                 break;
+            }
 
             case UI_SEPARATOR:
                 html = "<div id='id" + data.id + "' " + panelStyle + " class='sectionbreak columns'>" +
@@ -1321,10 +1324,8 @@ var elementHTML = function (data) {
             return "ACCEL // Not implemented fully!<div class='accelerometer' id='accel" + id +
                 "' ><div class='ball" + id + "'></div><pre class='accelerometeroutput" + id + "'></pre>";
         case UI_DETAILS:
-            return "<details id='details" + id + "' " + elementStyle + ">" +
-                "<summary class='details-summary'>" + data.label + "</summary>" +
-                "<span id='dl" + id + "' class='label label-wrap details-content'>" + data.value + "</span>" +
-                "</details>";
+            return "<summary class='details-summary'>" + data.label + "</summary>" +
+                "<span id='dl" + id + "' class='label label-wrap details-content'>" + data.value + "</span>";
         default:
             return "";
     }
