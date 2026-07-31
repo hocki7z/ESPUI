@@ -118,6 +118,40 @@
   word-wrap: break-word;
 }
 
+/* Details control: looks like a label, with a right-aligned rotating arrow */
+.details-wrap {
+  width: 90%;
+  display: inline-block;
+}
+
+.details-summary {
+  width: 100%;
+  cursor: pointer;
+  list-style: none;
+  padding-right: 1.6em;
+}
+
+.details-summary::-webkit-details-marker {
+  display: none;
+}
+
+.details-summary::after {
+  content: "";
+  position: absolute;
+  right: 0.6em;
+  top: 50%;
+  width: 0.45em;
+  height: 0.45em;
+  border-right: 0.15em solid currentColor;
+  border-bottom: 0.15em solid currentColor;
+  transform: translateY(-70%) rotate(45deg);
+  transition: transform 0.2s ease;
+}
+
+.details-wrap[open] > .details-summary::after {
+  transform: translateY(-30%) rotate(225deg);
+}
+
 .label.color-blue {
   background-color: #6f9ad1;
 }

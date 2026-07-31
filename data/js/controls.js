@@ -1249,9 +1249,13 @@ var elementHTML = function (data) {
     var inputType = data.hasOwnProperty('inputType') ? " type='" + data.inputType + "' " : "";
     switch (data.type) {
         case UI_LABEL:
-        case UI_DETAILS:
             return "<span id='l" + id + "' " + elementStyle +
                 " class='label label-wrap'>" + data.value + "</span>";
+        case UI_DETAILS:
+            return "<details id='dt" + id + "' class='details-wrap'>" +
+                "<summary id='l" + id + "' " + elementStyle +
+                " class='label label-wrap details-summary'>" + data.value + "</summary>" +
+                "</details>";
         case UI_FILEDISPLAY:
             return "<textarea id='fd" + id + "' rows='4' " + elementStyle +
                 " class='label label-wrap'>" + "</textarea>";
