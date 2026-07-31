@@ -1326,7 +1326,7 @@ var elementHTML = function (data) {
         case UI_DETAILS:
             return "<summary class='details-summary'>" + data.label + "</summary>" +
                 "<hr class='details-hr'/>" +
-                "<span id='dl" + id + "' class='label label-wrap details-content'>" + data.value + "</span>";
+                "<span id='dl" + id + "' class='label label-wrap'>" + data.value + "</span>";
         default:
             return "";
     }
