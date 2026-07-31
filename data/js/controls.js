@@ -1245,7 +1245,9 @@ var addToHTML = function (data) {
 
     } else {
         //We are adding to an existing panel so we only need the HTML for the element
-        var parent = $("#id" + data.parentControl);
+        //If the parent is a details control, add inside its <details> so children collapse with it
+        var details = $("#dt" + data.parentControl);
+        var parent = details.length > 0 ? details : $("#id" + data.parentControl);
         parent.append(elementHTML(data));
     }
 }
