@@ -118,16 +118,13 @@
   word-wrap: break-word;
 }
 
-/* Details control: looks like a label, with a right-aligned rotating arrow */
-.details-wrap {
-  width: 100%;
-}
-
+/* Details control: looks like a label card, with a right-aligned rotating arrow */
 .details-summary {
   position: relative;
   cursor: pointer;
   list-style: none;
   padding-right: 1.4em;
+  user-select: none;
 }
 
 .details-summary::-webkit-details-marker {
@@ -152,16 +149,8 @@
   transition: transform 0.2s ease;
 }
 
-.details-wrap[open] > .details-summary::after {
+details.card[open] > .details-summary::after {
   transform: translateY(-30%) rotate(225deg);
-}
-
-.details-content {
-  overflow: hidden;
-}
-
-.details-wrap:not([open]) > .details-content {
-  display: none;
 }
 
 .label.color-blue {

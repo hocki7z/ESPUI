@@ -1225,12 +1225,11 @@ var addToHTML = function (data) {
                 break;
 
             case UI_DETAILS:
-                html = "<div id='id" + data.id + "' " + panelStyle + " class='two columns " + panelwide + " card tcenter " +
-                    colorClass(data.color) + "'><details id='dt" + data.id + "' class='details-wrap'>" +
-                    "<summary class='details-summary'><h5>" + data.label + "</h5></summary>" +
-                    "<div id='dc" + data.id + "' class='details-content'><hr/>" +
+                html = "<details id='id" + data.id + "' " + panelStyle + " class='two columns " + panelwide + " card tcenter " +
+                    colorClass(data.color) + "'>" +
+                    "<summary class='details-summary'><h5>" + data.label + "</h5></summary><hr/>" +
                     elementHTML(data) +
-                    "</div></details></div>";
+                    "</details>";
                 break;
 
             case UI_SEPARATOR:
@@ -1246,9 +1245,7 @@ var addToHTML = function (data) {
 
     } else {
         //We are adding to an existing panel so we only need the HTML for the element
-        //If the parent is a details control, add inside its content wrapper so children collapse with it
-        var detailsContent = $("#dc" + data.parentControl);
-        var parent = detailsContent.length > 0 ? detailsContent : $("#id" + data.parentControl);
+        var parent = $("#id" + data.parentControl);
         parent.append(elementHTML(data));
     }
 }
