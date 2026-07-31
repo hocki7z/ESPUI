@@ -1231,14 +1231,17 @@ var addToHTML = function (data) {
                 break;
 
             case UI_DETAILS: {
-                var dsStyle = (data.hasOwnProperty('panelStyle') ? data.panelStyle + " " : "") +
-                    (data.hasOwnProperty('elementStyle') ? data.elementStyle : "");
-                dsStyle = dsStyle.trim();
-                panelStyle = dsStyle ? " style='" + dsStyle + "' " : "";
+//                var dsStyle = (data.hasOwnProperty('panelStyle') ? data.panelStyle + " " : "") +
+//                    (data.hasOwnProperty('elementStyle') ? data.elementStyle : "");
+//                dsStyle = dsStyle.trim();
+//                html = "<details id='id" + data.id + "' style='" + dsStyle + "'" +
+//                    " class='two columns " + panelwide + " card tcenter " + colorClass(data.color) + "'>" +
+//                    elementHTML(data) + "</details>";
                 html = "<details id='id" + data.id + "' " + panelStyle + " class='two columns " + panelwide + " card tcenter " +
-                    colorClass(data.color) + "'><h5>" + "data.label" + "</h5>" +
+                    colorClass(data.color) + "'>" +
                     elementHTML(data) +
                     "</details>";
+
                 break;
             }
 
@@ -1326,11 +1329,12 @@ var elementHTML = function (data) {
             return "ACCEL // Not implemented fully!<div class='accelerometer' id='accel" + id +
                 "' ><div class='ball" + id + "'></div><pre class='accelerometeroutput" + id + "'></pre>";
         case UI_DETAILS:
-            //return 
-            //"<summary class='details-summary'>" + data.label + "</summary>" +
-            //    "<span id='dl" + id + "' class='label label-wrap'>" + data.value + "</span>";
-            return "<span id='l" + id + "' " + elementStyle +
-                " class='label label-wrap'>" + data.value + "</span>";            
+            return 
+//                  "<summary class='details-summary'>" + data.label + "</summary>" +
+//                "<hr class='details-hr'/>" +
+//                "<span id='dl" + id + "' class='label label-wrap'>" + data.value + "</span>";
+                  "<span id='l" + id + "' " + elementStyle +
+                    " class='label label-wrap'>" + data.value + "</span>";
         default:
             return "";
     }
