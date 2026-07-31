@@ -127,7 +127,7 @@ details.card {
   position: relative;
   cursor: pointer;
   list-style: none;
-  padding-right: 1.4em;
+  padding: 6px 1.4em 6px 0;
   user-select: none;
 }
 
@@ -138,6 +138,7 @@ details.card {
 .details-summary h5 {
   display: inline-block;
   margin: 0;
+  line-height: 1.2;
 }
 
 .details-summary::after {
