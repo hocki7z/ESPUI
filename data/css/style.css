@@ -156,6 +156,14 @@
   transform: translateY(-30%) rotate(225deg);
 }
 
+.details-content {
+  overflow: hidden;
+}
+
+.details-wrap:not([open]) > .details-content {
+  display: none;
+}
+
 .label.color-blue {
   background-color: #6f9ad1;
 }
