@@ -657,8 +657,14 @@ function start() {
             /*
              * Update messages change the value/style of a component without adding new HTML
              */
-            case UPDATE_LABEL:
             case UPDATE_DETAILS:
+                $("#dl" + data.id).html(data.value);
+                if (data.hasOwnProperty('elementStyle')) {
+                    $("#id" + data.id).attr("style", data.elementStyle);
+                }
+                break;
+
+            case UPDATE_LABEL:
                 $("#l" + data.id).html(data.value);
                 if (data.hasOwnProperty('elementStyle')) {
                     $("#l" + data.id).attr("style", data.elementStyle);
@@ -1206,7 +1212,6 @@ var addToHTML = function (data) {
         var html = "";
         switch (data.type) {
             case UI_LABEL:
-            case UI_DETAILS:
             case UI_BUTTON:
             case UI_SWITCHER:
             case UI_CPAD:
@@ -1224,6 +1229,16 @@ var addToHTML = function (data) {
                     elementHTML(data) +
                     "</div>";
                 break;
+
+            case UI_DETAILS: {
+                var dsStyle = (data.hasOwnProperty('panelStyle') ? data.panelStyle + " " : "") +
+                    (data.hasOwnProperty('elementStyle') ? data.elementStyle : "");
+                dsStyle = dsStyle.trim();
+                html = "<details id='id" + data.id + "'" + (dsStyle ? " style='" + dsStyle + "'" : "") +
+                    " class='two columns " + panelwide + " card tcenter " + colorClass(data.color) + "'>" +
+                    elementHTML(data) + "</details>";
+                break;
+            }
 
             case UI_SEPARATOR:
                 html = "<div id='id" + data.id + "' " + panelStyle + " class='sectionbreak columns'>" +
@@ -1249,7 +1264,6 @@ var elementHTML = function (data) {
     var inputType = data.hasOwnProperty('inputType') ? " type='" + data.inputType + "' " : "";
     switch (data.type) {
         case UI_LABEL:
-        case UI_DETAILS:
             return "<span id='l" + id + "' " + elementStyle +
                 " class='label label-wrap'>" + data.value + "</span>";
         case UI_FILEDISPLAY:
@@ -1309,6 +1323,10 @@ var elementHTML = function (data) {
         case UI_ACCEL:
             return "ACCEL // Not implemented fully!<div class='accelerometer' id='accel" + id +
                 "' ><div class='ball" + id + "'></div><pre class='accelerometeroutput" + id + "'></pre>";
+        case UI_DETAILS:
+            return "<summary class='details-summary'>" + data.label + "</summary>" +
+                "<hr class='details-hr'/>" +
+                "<span id='dl" + id + "' class='label label-wrap'>" + data.value + "</span>";
         default:
             return "";
     }
