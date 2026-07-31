@@ -1206,7 +1206,6 @@ var addToHTML = function (data) {
         var html = "";
         switch (data.type) {
             case UI_LABEL:
-            case UI_DETAILS:
             case UI_BUTTON:
             case UI_SWITCHER:
             case UI_CPAD:
@@ -1223,6 +1222,14 @@ var addToHTML = function (data) {
                     colorClass(data.color) + "'><h5>" + data.label + "</h5><hr/>" +
                     elementHTML(data) +
                     "</div>";
+                break;
+
+            case UI_DETAILS:
+                html = "<div id='id" + data.id + "' " + panelStyle + " class='two columns " + panelwide + " card tcenter " +
+                    colorClass(data.color) + "'><details id='dt" + data.id + "' class='details-wrap'>" +
+                    "<summary class='details-summary'><h5>" + data.label + "</h5></summary><hr/>" +
+                    elementHTML(data) +
+                    "</details></div>";
                 break;
 
             case UI_SEPARATOR:
@@ -1249,13 +1256,9 @@ var elementHTML = function (data) {
     var inputType = data.hasOwnProperty('inputType') ? " type='" + data.inputType + "' " : "";
     switch (data.type) {
         case UI_LABEL:
+        case UI_DETAILS:
             return "<span id='l" + id + "' " + elementStyle +
                 " class='label label-wrap'>" + data.value + "</span>";
-        case UI_DETAILS:
-            return "<details id='dt" + id + "' class='details-wrap'>" +
-                "<summary id='l" + id + "' " + elementStyle +
-                " class='label label-wrap details-summary'>" + data.value + "</summary>" +
-                "</details>";
         case UI_FILEDISPLAY:
             return "<textarea id='fd" + id + "' rows='4' " + elementStyle +
                 " class='label label-wrap'>" + "</textarea>";

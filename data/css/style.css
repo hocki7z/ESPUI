@@ -120,19 +120,23 @@
 
 /* Details control: looks like a label, with a right-aligned rotating arrow */
 .details-wrap {
-  width: 90%;
-  display: inline-block;
+  width: 100%;
 }
 
 .details-summary {
-  width: 100%;
+  position: relative;
   cursor: pointer;
   list-style: none;
-  padding-right: 1.6em;
+  padding-right: 1.4em;
 }
 
 .details-summary::-webkit-details-marker {
   display: none;
+}
+
+.details-summary h5 {
+  display: inline-block;
+  margin: 0;
 }
 
 .details-summary::after {
@@ -140,8 +144,8 @@
   position: absolute;
   right: 0.6em;
   top: 50%;
-  width: 0.45em;
-  height: 0.45em;
+  width: 0.5em;
+  height: 0.5em;
   border-right: 0.15em solid currentColor;
   border-bottom: 0.15em solid currentColor;
   transform: translateY(-70%) rotate(45deg);
