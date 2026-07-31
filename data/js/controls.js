@@ -63,6 +63,9 @@ const UPDATE_TIME = 120;
 const UI_FILEDISPLAY = 21;
 const UPDATE_FILEDISPLAY = 121;
 
+const UI_DETAILS = 22;
+const UPDATE_DETAILS = 122;
+
 const UI_FRAGMENT = 98;
 
 const UP = 0;
@@ -372,6 +375,7 @@ function start() {
             case UI_SELECT:
             case UI_GAUGE:
             case UI_SEPARATOR:
+            case UI_DETAILS:
                 if (data.visible) addToHTML(data);
                 break;
 
@@ -654,6 +658,7 @@ function start() {
              * Update messages change the value/style of a component without adding new HTML
              */
             case UPDATE_LABEL:
+            case UPDATE_DETAILS:
                 $("#l" + data.id).html(data.value);
                 if (data.hasOwnProperty('elementStyle')) {
                     $("#l" + data.id).attr("style", data.elementStyle);
@@ -1201,6 +1206,7 @@ var addToHTML = function (data) {
         var html = "";
         switch (data.type) {
             case UI_LABEL:
+            case UI_DETAILS:
             case UI_BUTTON:
             case UI_SWITCHER:
             case UI_CPAD:
@@ -1243,6 +1249,7 @@ var elementHTML = function (data) {
     var inputType = data.hasOwnProperty('inputType') ? " type='" + data.inputType + "' " : "";
     switch (data.type) {
         case UI_LABEL:
+        case UI_DETAILS:
             return "<span id='l" + id + "' " + elementStyle +
                 " class='label label-wrap'>" + data.value + "</span>";
         case UI_FILEDISPLAY:
