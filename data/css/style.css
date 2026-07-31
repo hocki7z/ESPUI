@@ -119,6 +119,10 @@
 }
 
 /* Details control: looks like a label card, with a right-aligned rotating arrow */
+details.card {
+  min-height: unset;
+}
+
 .details-summary {
   position: relative;
   cursor: pointer;
