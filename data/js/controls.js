@@ -1206,7 +1206,6 @@ var addToHTML = function (data) {
         var html = "";
         switch (data.type) {
             case UI_LABEL:
-            case UI_DETAILS:
             case UI_BUTTON:
             case UI_SWITCHER:
             case UI_CPAD:
@@ -1223,6 +1222,14 @@ var addToHTML = function (data) {
                     colorClass(data.color) + "'><h5>" + data.label + "</h5><hr/>" +
                     elementHTML(data) +
                     "</div>";
+                break;
+
+            case UI_DETAILS:
+                html = "<details id='id" + data.id + "' " + panelStyle + " class='two columns " + panelwide + " card tcenter " +
+                    colorClass(data.color) + "'>" +
+                    "<summary class='details-summary'><h5>" + data.label + "</h5></summary><hr/>" +
+                    elementHTML(data) +
+                    "</details>";
                 break;
 
             case UI_SEPARATOR:

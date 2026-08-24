@@ -118,6 +118,48 @@
   word-wrap: break-word;
 }
 
+
+/* Details control: looks like a label card, with a right-aligned rotating arrow */
+details.card {
+  min-height: unset;
+}
+
+.details-summary {
+  position: relative;
+  cursor: pointer;
+  list-style: none;
+  padding: 6px 1.4em 6px 0;
+  user-select: none;
+}
+
+.details-summary::-webkit-details-marker {
+  display: none;
+}
+
+.details-summary h5 {
+  display: inline-block;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.details-summary::after {
+  content: "";
+  position: absolute;
+  right: 0.6em;
+  top: 50%;
+  width: 0.5em;
+  height: 0.5em;
+  border-right: 0.15em solid currentColor;
+  border-bottom: 0.15em solid currentColor;
+  transform: translateY(-70%) rotate(45deg);
+  transition: transform 0.2s ease;
+}
+
+details.card[open] > .details-summary::after {
+  transform: translateY(-30%) rotate(225deg);
+}
+
+
 .label.color-blue {
   background-color: #6f9ad1;
 }
