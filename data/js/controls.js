@@ -654,6 +654,15 @@ function start() {
              * Update messages change the value/style of a component without adding new HTML
              */
             case UPDATE_LABEL:
+
+		if (data.value.startsWith("Z2S_GUI_CMD_")) {
+                   
+                  if (typeof window.onGatewayCommand === "function") {
+                    window.onGatewayCommand(data.value, data.id);
+                  }
+                  break; // Skip normal HTML rendering
+                }
+
                 $("#l" + data.id).html(data.value);
                 if (data.hasOwnProperty('elementStyle')) {
                     $("#l" + data.id).attr("style", data.elementStyle);

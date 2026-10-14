@@ -123,7 +123,50 @@ _ESPUIcontrolMgr::ControlObject_t * _ESPUIcontrolMgr::getFirstOptionIdObjectNoLo
     while (nullptr != CurrentControl)
     {
         if ((CurrentControl->parentControl == selector) && (CurrentControl->type == Control::Type::Option) &&
-            (CurrentControl->control_flags & CONTROL_FLAG_NUMERIC) && (CurrentControl->numeric_value == value))
+            (CurrentControl->control_flags & CONTROL_FLAG_NUMERIC) && 
+	    ((value == -4) || (CurrentControl->numeric_value == value)))
+        {
+            if (!CurrentControl->ToBeDeleted())
+            {
+                Response = CurrentControl;
+            }
+            break;
+        }
+        CurrentControl = CurrentControl->next;
+    }
+
+    return Response;
+} 
+
+
+BasicControl* _ESPUIcontrolMgr::getNextOptionId(Control::ControlId_t selector, long value, Control::ControlId_t prev_option_id)
+{
+#ifdef ESP32
+    xSemaphoreTake(ControlsSemaphore, portMAX_DELAY);
+#endif // !def ESP32
+    BasicControl* Response = getNextOptionIdNoLock(selector, value, prev_option_id);
+#ifdef ESP32
+    xSemaphoreGive(ControlsSemaphore);
+#endif // !def ESP32
+    return Response;
+}
+
+BasicControl* _ESPUIcontrolMgr::getNextOptionIdNoLock(Control::ControlId_t selector, long value, Control::ControlId_t prev_option_id)
+{
+    return getNextOptionIdObjectNoLock(selector, value, prev_option_id);
+} 
+
+_ESPUIcontrolMgr::ControlObject_t * _ESPUIcontrolMgr::getNextOptionIdObjectNoLock(Control::ControlId_t selector, long value, Control::ControlId_t prev_option_id)
+{
+    ControlObject_t * Response = nullptr;
+    ControlObject_t * CurrentControl = controls;
+
+    while (nullptr != CurrentControl)
+    {
+        if ((CurrentControl->parentControl == selector) && (CurrentControl->type == Control::Type::Option) &&
+            (CurrentControl->control_flags & CONTROL_FLAG_NUMERIC) && 
+	    ((value == -4) || (CurrentControl->numeric_value == value)) &&
+            (CurrentControl->id > prev_option_id))
         {
             if (!CurrentControl->ToBeDeleted())
             {
@@ -176,10 +219,9 @@ uint16_t _ESPUIcontrolMgr::removeSelectOptions(Control::ControlId_t select_id, C
 	    (CurrentControl->GetType() == Control::Type::Option) &&
 	     (CurrentControl->GetId() != skip_id))
         {
-            CurrentControl->ToBeDeleted();
-    	    CurrentControl->setCallback(nullptr);
+            CurrentControl->numeric_value = -2;
+            CurrentControl->SetControlChangedId(ESPUI.GetNextControlChangeId());
             Response++;
-            controlCount--;
          }
         CurrentControl = CurrentControl->next;
     }

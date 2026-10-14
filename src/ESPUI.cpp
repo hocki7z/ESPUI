@@ -482,6 +482,8 @@ void ESPUIClass::onWsEvent(
         if(type == WS_EVT_CONNECT)
         {
             ws->cleanupClients();
+            if (on_ws_connect)
+	      on_ws_connect();
         }
 
         if (MapOfClients.end() == MapOfClients.find(client->id()))
@@ -626,6 +628,16 @@ bool ESPUIClass::removeControl(Control::ControlId_t id, bool force_rebuild_ui)
 } // removeControl
 
 
+bool ESPUIClass::removeOptionControl(Control::ControlId_t id)
+{
+    bool Response = ESPUIcontrolMgr.removeControl(id);
+    
+    ESPUI.NotifyClients(ClientUpdateType_t::UpdateNeeded);
+   
+    return Response;
+} // removeControl
+
+
 uint16_t ESPUIClass::removeSelectOptions(Control::ControlId_t select_id,  Control::ControlId_t skip_id, bool force_rebuild_ui)
 {
     uint16_t Response = ESPUIcontrolMgr.removeSelectOptions(select_id, skip_id);
@@ -636,7 +648,7 @@ uint16_t ESPUIClass::removeSelectOptions(Control::ControlId_t select_id,  Contro
     }
     else
     {
-        ESPUI.NotifyClients(ClientUpdateType_t::RebuildNeeded);
+        ESPUI.NotifyClients(ClientUpdateType_t::UpdateNeeded);
 
     }
     return Response;
@@ -725,6 +737,9 @@ BasicControl* ESPUIClass::getControl(Control::ControlId_t id) {return ESPUIcontr
 BasicControl* ESPUIClass::getControlNoLock(Control::ControlId_t id) {return ESPUIcontrolMgr.getControlNoLock(id);}
 BasicControl* ESPUIClass::getFirstOptionId(Control::ControlId_t selector, long value)
 {return ESPUIcontrolMgr.getFirstOptionId(selector, value);}
+BasicControl* ESPUIClass::getNextOptionId(Control::ControlId_t selector, long value, Control::ControlId_t prev_option_id)
+{return ESPUIcontrolMgr.getNextOptionId(selector, value, prev_option_id);}
+
 
 
 void ESPUIClass::updateControl(BasicControl* control, int)
@@ -1166,6 +1181,19 @@ void ESPUIClass::NotifyClients(ClientUpdateType_t newState)
         CurrentClient.second->NotifyClient(newState);
     }
 }
+
+// Tell all of the clients that they need to ask for an upload of the control data.
+bool ESPUIClass::isSynchronized()
+{
+    bool result = true;
+
+    for (auto& CurrentClient : MapOfClients)
+    {
+        result = result && CurrentClient.second->IsSyncronized();
+    }
+    return result;
+}
+
 
 void ESPUIClass::jsonReload()
 {

@@ -51,7 +51,11 @@ public:
     BasicControl* getControlNoLock(Control::ControlId_t id);
     Control::ControlId_t GetControlCount() {return controlCount;}
     BasicControl* getFirstOptionId(Control::ControlId_t selector, long value);
+    BasicControl* getNextOptionId(Control::ControlId_t selector, long value, Control::ControlId_t prev_option_id);
+
     BasicControl* getFirstOptionIdNoLock(Control::ControlId_t selector, long value);
+    BasicControl* getNextOptionIdNoLock(Control::ControlId_t selector, long value, Control::ControlId_t prev_option_id);
+
 
     
 
@@ -100,6 +104,8 @@ ControlObject_t(Control::ControlId_t id,
     Control::ControlId_t idCounter = 0;
     ControlObject_t * getControlObjectNoLock(Control::ControlId_t id);
     ControlObject_t * getFirstOptionIdObjectNoLock(Control::ControlId_t selector, long value);
+    ControlObject_t * getNextOptionIdObjectNoLock(Control::ControlId_t selector, long value, Control::ControlId_t prev_option_id);
+
 
 #ifdef ESP32
     SemaphoreHandle_t ControlsSemaphore = NULL;

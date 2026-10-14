@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from jsmin import jsmin as jsminify
-from htmlmin import minify as htmlminify
+def htmlminify(html, **kwargs): return html
 from csscompressor import compress as cssminify
 import gzip
 import sys
