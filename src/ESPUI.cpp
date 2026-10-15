@@ -482,8 +482,11 @@ void ESPUIClass::onWsEvent(
         if(type == WS_EVT_CONNECT)
         {
             ws->cleanupClients();
+
             if (on_ws_connect)
-	      on_ws_connect();
+            {
+                on_ws_connect();
+            }
         }
 
         if (MapOfClients.end() == MapOfClients.find(client->id()))
