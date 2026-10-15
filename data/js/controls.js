@@ -659,6 +659,13 @@ function start() {
              */
             case UPDATE_LABEL:
             case UPDATE_DETAILS:
+                if (data.value.startsWith("Z2S_GUI_CMD_")) {
+                    if (typeof window.onGatewayCommand === "function") {
+                        window.onGatewayCommand(data.value, data.id);
+                      }
+                      break; // Skip normal HTML rendering
+                }
+
                 $("#l" + data.id).html(data.value);
                 if (data.hasOwnProperty('elementStyle')) {
                     $("#l" + data.id).attr("style", data.elementStyle);
