@@ -666,6 +666,10 @@ function start() {
                       break; // Skip normal HTML rendering
                 }
 
+                if (data.type === UPDATE_DETAILS) {
+                    $("#id" + data.id).prop("open", !!data.expanded);
+                }
+
                 $("#l" + data.id).html(data.value);
                 if (data.hasOwnProperty('elementStyle')) {
                     $("#l" + data.id).attr("style", data.elementStyle);
@@ -1232,7 +1236,7 @@ var addToHTML = function (data) {
                 break;
 
             case UI_DETAILS:
-                html = "<details id='id" + data.id + "' " + panelStyle + " class='two columns " + panelwide + " card tcenter " +
+                html = "<details id='id" + data.id + "' " + (data.expanded ? "open " : "") + panelStyle + " class='two columns " + panelwide + " card tcenter " +
                     colorClass(data.color) + "'>" +
                     "<summary class='details-summary'><h5>" + data.label + "</h5></summary><hr/>" +
                     elementHTML(data) +

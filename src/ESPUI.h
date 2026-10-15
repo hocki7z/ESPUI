@@ -244,6 +244,7 @@ void setPanelStyle(Control::ControlId_t id, const char *style, int clientId = -1
 
     void setElementStyle(Control::ControlId_t id, const char* style, int clientId = -1);
     void setInputType(Control::ControlId_t id, const char *type, int clientId = -1);
+    void updateDetails(Control::ControlId_t id, bool expanded, int clientId = -1);
 
     void setPanelWide(Control::ControlId_t id, bool wide);
     void setVertical(Control::ControlId_t id, bool vert = true);

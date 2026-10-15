@@ -174,6 +174,7 @@ public:
 
     const char *panelStyle = nullptr;
     const char *elementStyle = nullptr;
+    bool detailsExpanded = false;
 
     LabelControl(ControlId_t id,
             Type type,

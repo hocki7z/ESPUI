@@ -797,6 +797,19 @@ void ESPUIClass::setElementStyle(Control::ControlId_t id, const char *style, int
     }
 }
 
+void ESPUIClass::updateDetails(Control::ControlId_t id, bool expanded, int clientId)
+{
+    BasicControl* basic_control = getControl(id);
+    if ((basic_control) && (basic_control->GetType() == Control::Type::Details) &&
+        ((basic_control->getClassId() == LABEL_CONTROL_ID) ||
+         (basic_control->getClassId() == STANDARD_CONTROL_ID)))
+    {
+        LabelControl* details_control = static_cast<LabelControl*>(basic_control);
+        details_control->detailsExpanded = expanded;
+        updateControl(details_control, clientId);
+    }
+}
+
 void ESPUIClass::setInputType(Control::ControlId_t id, const char *type, int clientId)
 {
     BasicControl* basic_control = getControl(id);
