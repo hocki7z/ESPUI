@@ -11,7 +11,7 @@
     #define AllocateJsonDocument(name, size)    JsonDocument name
     #define AllocateJsonArray(doc, name)        doc[name].to<JsonArray>()
     #define AllocateJsonObject(doc)             doc.add<JsonObject>()
-    #define AllocateNamedJsonObject(t, s, n)    t[n] = s
+    #define AllocateNamedJsonObject(t, s, n)    t = s[n].to<JsonObject>()
 #else
     #define AllocateJsonDocument(name, size)    DynamicJsonDocument name(size)
     #define AllocateJsonArray(doc, name)        doc.createNestedArray(name)

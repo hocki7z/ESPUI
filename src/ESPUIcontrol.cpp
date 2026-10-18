@@ -447,7 +447,7 @@ bool BasicControl::MarshalControl(JsonObject & _item,
     
     bool ControlIsFragmented = false;
     // create a new item in the response document
-    JsonObject & item = _item;
+    JsonObject item = _item;
 
 
     if (control_flags & CONTROL_FLAG_NUMERIC)
@@ -592,7 +592,7 @@ bool LabelControl::MarshalControl(JsonObject & _item,
 
     bool ControlIsFragmented = false;
     // create a new item in the response document
-    JsonObject & item = _item;
+    JsonObject item = _item;
 
 
     if (control_flags & CONTROL_FLAG_NUMERIC)
