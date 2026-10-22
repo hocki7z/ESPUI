@@ -35,6 +35,13 @@
 
 .espui-color-pickr > button:disabled { opacity: .45; cursor: not-allowed; }
 
+/* Keep ESPUI's global button spacing out of Pickr's comparison strip. */
+.pcr-app[data-theme="monolith"] .pcr-selection .pcr-color-preview .pcr-last-color {
+  margin: 0;
+  padding: 0;
+  min-height: 0;
+}
+
 .container {
   position: relative;
   width: 79%;
