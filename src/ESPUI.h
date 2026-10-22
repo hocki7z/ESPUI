@@ -336,6 +336,8 @@ protected:
     const char* basicAuthPassword = nullptr;
     bool basicAuth = true;
 
+    void registerPickrRoutes();
+
     Control::ControlId_t addControl(Control::Type type, const char* label, const String& value, Control::Color color, Control::ControlId_t parentControl, Control* control);
 
 #define ClientUpdateType_t ESPUIclient::ClientUpdateType_t

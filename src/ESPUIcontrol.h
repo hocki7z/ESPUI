@@ -85,6 +85,7 @@ public:
         Separator,
         Time,
         FileDisplay,
+        ColorPickr,     // #RRGGBB text input with an offline Pickr popup
 
         Fragment = 98,
         Password = 99,

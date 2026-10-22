@@ -10,6 +10,26 @@ import argparse
 import re
 from glob import glob
 
+
+PICKR_VERSION = '1.10.2'
+
+PICKR_TEMPLATE = '''#pragma once
+
+#include <stdint.h>
+#include <pgmspace.h>
+
+// Pickr v{version} - Copyright Simon Reinisch.
+// SPDX-License-Identifier: MIT
+// Full license and notices: ../data/LICENSE.pickr
+// Source: https://github.com/simonwep/pickr (Monolith theme)
+// Generated gzip: {sourcelen} source bytes, {gziplen} gzip bytes. No trailing NUL.
+// Regenerate with tools/prepare_static_ui_sources.py --auto --nostoremini.
+static const uint8_t {constant}_GZIP[] PROGMEM = {{
+{gzipdata}
+}};
+'''
+
+
 TARGET_TEMPLATE = '''const char {constant}[] PROGMEM = R"=====(
 {minidata}
 )=====";
@@ -78,6 +98,12 @@ def perform_minify(c):
 def process_file(infile, outdir, storemini=True):
     print("Processing file %s" % infile)
     c = get_context(infile, outdir)
+
+    if (os.path.basename(c['infile']).lower() == 'pickr.min.' + c['type']
+            and c['type'] in ('js', 'css')):
+        process_pickr(c, PICKR_TEMPLATE, PICKR_VERSION)
+        return
+
     c = perform_minify(c)
     if storemini:
         if c['infile'] == c['minifile']:
@@ -90,6 +116,22 @@ def process_file(infile, outdir, storemini=True):
         print("  Using C constant names %s and %s_GZIP" % (c['constant'], c['constant']))
         print("  Writing C header file %s" % c['outfile'])
         outfile.write(TARGET_TEMPLATE.format(**c))
+
+def process_pickr(c, template=PICKR_TEMPLATE, version=PICKR_VERSION):
+    """Create a gzip header from the local minified asset without rewriting it."""
+    with open(c['infile'], encoding='utf-8', newline=None) as source:
+        data = source.read().encode('utf-8')
+
+    compressed = gzip.compress(data, mtime=0)
+    rows = [','.join(str(b) for b in compressed[i:i + 20]) + ','
+            for i in range(0, len(compressed), 20)]
+    header = template.format(
+        version=version, type=c['type'],
+        sourcelen=len(data), gziplen=len(compressed), gzipdata='\n'.join(rows),
+        constant=c['constant'])
+    print('  Writing vendor gzip header %s' % c['outfile'])
+    with open(c['outfile'], 'w', encoding='utf-8', newline='\n') as outfile:
+        outfile.write(header)
         
 def filenamefilter(pattern, strings):
     return filter(re.compile(pattern).search, strings)        

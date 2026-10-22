@@ -891,6 +891,25 @@ void Control::onWsEvent(String & cmd, String& data) {
         }
         else if (cmd.equals(F("tvalue")))
         {
+          if (type == Type::ColorPickr)
+          {
+            // Reject malformed values before invoking application callbacks.
+            if (data.length() != 7 || data[0] != '#')
+              break;
+            bool valid = true;
+            for (size_t i = 1; i < 7; ++i)
+            {
+              const char c = data[i];
+              if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
+              {
+                valid = false;
+                break;
+              }
+            }
+            if (!valid)
+              break;
+            data.toUpperCase();
+          }
             *string_value = data;
             SendCallback(T_VALUE);
         }

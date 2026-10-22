@@ -30,6 +30,9 @@ const UPDATE_NUMBER = 107;
 const UI_TEXT_INPUT = 8;
 const UPDATE_TEXT_INPUT = 108;
 
+const UI_COLOR_PICKR = 22;
+const UPDATE_COLOR_PICKR = 122;
+
 const UI_GRAPH = 9;
 const ADD_GRAPH_POINT = 10;
 const CLEAR_GRAPH = 109;
@@ -190,6 +193,7 @@ function restoreGraphData(id) {
 }
 
 function restart() {
+    disposeColorPickrs();
     $(document).add("*").off();
     $("#row").html("");
     conStatusError();
@@ -314,6 +318,7 @@ function start() {
         switch (data.type) {
             case UI_INITIAL_GUI:
                 // Clear current elements
+                disposeColorPickrs();
                 $("#row").html("");
                 $("#tabsnav").html("");
                 $("#tabscontent").html("");
@@ -373,6 +378,13 @@ function start() {
             case UI_GAUGE:
             case UI_SEPARATOR:
                 if (data.visible) addToHTML(data);
+                break;
+
+            case UI_COLOR_PICKR:
+                if (data.visible) {
+                    addToHTML(data);
+                    initColorPickr(data);
+                }
                 break;
 
             /*
@@ -686,6 +698,14 @@ function start() {
                 $("#num" + data.id).val(data.value);
                 if (data.hasOwnProperty('elementStyle')) {
                     $("#num" + data.id).attr("style", data.elementStyle);
+                }
+                break;
+
+            case UPDATE_COLOR_PICKR:
+                // Server values replace the committed baseline, even while open.
+                syncColorPickr(data.id, data.value);
+                if (data.hasOwnProperty('elementStyle')) {
+                    $("#text" + data.id).parent().attr("style", data.elementStyle);
                 }
                 break;
 
@@ -1195,6 +1215,125 @@ var rangeSlider = function (isDiscrete) {
 };
 
 
+
+// Each control owns a Pickr popup and its native listeners.
+var colorPickrInstances = Object.create(null);
+
+function disposeColorPickrs() {
+    Object.keys(colorPickrInstances).forEach(function (id) {
+        var state = colorPickrInstances[id];
+        state.ready = false;
+        state.silent = true;
+        state.input.removeEventListener('input', state.onInput);
+        state.picker.destroyAndRemove();
+    });
+    colorPickrInstances = Object.create(null);
+}
+
+function initColorPickr(data) {
+    var input = document.getElementById('text' + data.id);
+    var button = document.getElementById('colorbtn' + data.id);
+    var state = {
+        input: input, ready: false, silent: false, open: false,
+        snapshot: '#000000', picker: null
+    };
+    colorPickrInstances[data.id] = state;
+    syncColorPickr(data.id, data.value);
+    state.onInput = function () { syncColorPickr(data.id); };
+    input.addEventListener('input', state.onInput);
+    state.picker = Pickr.create({
+        el: button, theme: 'monolith', useAsButton: true,
+        default: input.dataset.lastColor,
+        lockOpacity: true, defaultRepresentation: 'HEX', comparison: true,
+        swatches: ['#000000', '#FFFFFF', '#FF0000', '#00FF00',
+                   '#0000FF', '#FFFF00', '#00FFFF', '#FF00FF'],
+        components: {
+            opacity: false, hue: true, preview: true,
+            interaction: { input: true, save: true, cancel: true, clear: false }
+        }
+    });
+    state.picker.on('init', function () {
+        if (colorPickrInstances[data.id] !== state) return;
+        // Pickr's default initialization can emit save; it is not a user commit.
+        state.ready = true;
+        syncColorPickr(data.id, input.dataset.lastColor);
+        if (input.disabled) state.picker.disable();
+    }).on('show', function () {
+        if (!state.ready || input.disabled) {
+            state.picker.hide();
+            return;
+        }
+        Object.keys(colorPickrInstances).forEach(function (id) {
+            var other = colorPickrInstances[id];
+            if (other !== state && other.open) other.picker.hide();
+        });
+        state.open = true;
+        state.snapshot = input.dataset.lastColor;
+        syncColorPickr(data.id, state.snapshot);
+    }).on('change', function (color) {
+        if (!state.ready || state.silent || !state.open || input.disabled || !color) return;
+        // Preview only: never change the committed baseline or send a callback.
+        input.value = color.toHEXA().toString().slice(0, 7).toUpperCase();
+        syncColorPickr(data.id);
+    }).on('save', function (color) {
+        if (!state.ready || state.silent || !state.open || input.disabled || !color) return;
+        input.value = color.toHEXA().toString().slice(0, 7).toUpperCase();
+        commitColorPickr(data.id, true);
+        state.picker.hide();
+    }).on('cancel', function () {
+        if (!state.ready || state.silent) return;
+        syncColorPickr(data.id, state.snapshot);
+        state.picker.hide();
+    }).on('hide', function () {
+        state.open = false;
+        if (!state.ready || state.silent) return;
+        // Outside clicks, Escape and disabling all discard unsaved previews.
+        syncColorPickr(data.id, state.snapshot);
+    });
+}
+
+function syncColorPickr(id, value) {
+    var state = colorPickrInstances[id];
+    if (!state) return;
+    var input = state.input;
+    if (value !== undefined) {
+        input.value = /^#[0-9a-f]{6}$/i.test(value)
+            ? value.toUpperCase() : (input.dataset.lastColor || '#000000');
+        input.dataset.lastColor = input.value;
+        state.snapshot = input.value;
+        if (state.ready) {
+            state.silent = true;
+            try {
+                state.picker.setColor(input.value, true);
+                // Update Pickr's selected/comparison color without its save event.
+                state.picker.applyColor(true);
+            } finally {
+                state.silent = false;
+            }
+        }
+    }
+    var valid = /^#[0-9a-f]{6}$/i.test(input.value);
+    input.setCustomValidity(valid ? '' : 'Enter a color as #RRGGBB');
+    if (valid) {
+        document.getElementById('colorbtn' + id).style.backgroundColor = input.value;
+    }
+}
+
+function commitColorPickr(id, confirmed) {
+    var state = colorPickrInstances[id];
+    if (!state || !state.ready || state.silent || state.input.disabled) return;
+    if (state.open && !confirmed) return;
+    var input = state.input;
+    if (!/^#[0-9a-f]{6}$/i.test(input.value)) {
+        syncColorPickr(id, input.dataset.lastColor);
+        return;
+    }
+    var value = input.value.toUpperCase();
+    var changed = value !== input.dataset.lastColor;
+    syncColorPickr(id, value);
+    if (changed) textchange(id);
+}
+
 var addToHTML = function (data) {
     panelStyle = data.hasOwnProperty('panelStyle') ? " style='" + data.panelStyle + "' " : "";
     panelwide = data.hasOwnProperty('wide') ? "wide" : "";
@@ -1215,6 +1354,7 @@ var addToHTML = function (data) {
             case UI_SLIDER:
             case UI_NUMBER:
             case UI_TEXT_INPUT:
+            case UI_COLOR_PICKR:
             case UI_SELECT:
             case UI_GRAPH:
             case UI_GAUGE:
@@ -1298,6 +1438,13 @@ var elementHTML = function (data) {
         case UI_TEXT_INPUT:
             return "<input " + inputType + "style='color:black; " + data.elementStyle + "' id='text" + id +
                 "' value='" + data.value + "' oninput='textchange(" + id + ")' />";
+        case UI_COLOR_PICKR:
+            // Keep the ordinary text input separate from Pickr's button/popup.
+            return "<div class='espui-color-pickr' " + elementStyle + ">" +
+                "<button type='button' id='colorbtn" + id + "' aria-label='Open color picker'></button>" +
+                "<input type='text' id='text" + id + "' maxlength='7' pattern='#[0-9a-fA-F]{6}' " +
+                "aria-label='Color in hexadecimal RGB' autocomplete='off' spellcheck='false' " +
+                "onchange='commitColorPickr(" + id + ")' /></div>";
         case UI_SELECT:
             return "<select style='color:black; " + data.elementStyle + "' id='select" + id +
                 "' onchange='selectchange(" + id + ")' />";
@@ -1343,6 +1490,23 @@ var processEnabled = function (data) {
         case UI_TEXT_INPUT:
         case UPDATE_TEXT_INPUT:
             $("#text" + data.id).prop("disabled", !data.enabled);
+            break;
+
+
+        case UI_COLOR_PICKR:
+        case UPDATE_COLOR_PICKR:
+            $("#text" + data.id).prop("disabled", !data.enabled);
+            $("#colorbtn" + data.id).prop("disabled", !data.enabled);
+            var pickrState = colorPickrInstances[data.id];
+            if (pickrState && pickrState.ready) {
+                if (data.enabled) {
+                    pickrState.picker.enable();
+                } else {
+                    pickrState.picker.hide();
+                    syncColorPickr(data.id, pickrState.input.dataset.lastColor);
+                    pickrState.picker.disable();
+                }
+            }
             break;
 
         case UI_SELECT:
