@@ -1219,6 +1219,8 @@ var rangeSlider = function (isDiscrete) {
 
 // One shared popup; inputs are added dynamically by WebSocket GUI messages.
 var colorisConfigured = false;
+var colorisActiveInput = null;
+var colorisConfirmed = false;
 function initColoris(data) {
     if (!colorisConfigured) {
         Coloris({
@@ -1228,6 +1230,12 @@ function initColoris(data) {
             swatches: ['#000000', '#FFFFFF', '#FF0000', '#00FF00',
                        '#0000FF', '#FFFF00', '#00FFFF', '#FF00FF']
         });
+        // Capture before Coloris's delegated click handler closes the popup.
+        document.addEventListener('click', function (event) {
+            if (colorisActiveInput && event.target.closest('#clr-close')) {
+                colorisConfirmed = true;
+            }
+        }, true);
         colorisConfigured = true;
     }
     var input = document.getElementById('text' + data.id);
@@ -1238,6 +1246,21 @@ function initColoris(data) {
         if (!input.disabled) input.click();
     };
     input.addEventListener('input', function () { syncColoris(data.id); });
+    input.addEventListener('open', function () {
+        colorisActiveInput = input;
+        colorisConfirmed = false;
+    });
+    input.addEventListener('close', function () {
+        var confirmed = colorisConfirmed;
+        colorisActiveInput = null;
+        colorisConfirmed = false;
+        if (confirmed) {
+            commitColoris(data.id);
+        } else {
+            input.value = input.dataset.lastColor || '#000000';
+            syncColoris(data.id);
+        }
+    });
     syncColoris(data.id);
 }
 
@@ -1252,6 +1275,8 @@ function syncColoris(id) {
 
 function commitColoris(id) {
     var input = document.getElementById('text' + id);
+    // Native change events (including blur) must not save a popup preview.
+    if (input === colorisActiveInput) return;
     if (!/^#[0-9a-f]{6}$/i.test(input.value)) {
         input.value = input.dataset.lastColor || '#000000';
         syncColoris(id);
