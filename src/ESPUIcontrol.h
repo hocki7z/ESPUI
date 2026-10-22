@@ -85,6 +85,7 @@ public:
         Separator,
         Time,
         FileDisplay,
+        Coloris, // #RRGGBB text input with an offline Coloris popup (no alpha)
 
         Fragment = 98,
         Password = 99,

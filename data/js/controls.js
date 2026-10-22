@@ -29,6 +29,8 @@ const UPDATE_NUMBER = 107;
 
 const UI_TEXT_INPUT = 8;
 const UPDATE_TEXT_INPUT = 108;
+const UI_COLORIS = 22;
+const UPDATE_COLORIS = 122;
 
 const UI_GRAPH = 9;
 const ADD_GRAPH_POINT = 10;
@@ -375,6 +377,13 @@ function start() {
                 if (data.visible) addToHTML(data);
                 break;
 
+            case UI_COLORIS:
+                if (data.visible) {
+                    addToHTML(data);
+                    initColoris(data);
+                }
+                break;
+
             /*
               These elements must call additional functions after being added to the DOM
             */
@@ -687,6 +696,19 @@ function start() {
                 if (data.hasOwnProperty('elementStyle')) {
                     $("#num" + data.id).attr("style", data.elementStyle);
                 }
+                break;
+
+            case UPDATE_COLORIS:
+                $("#text" + data.id).val(data.value);
+                if (data.hasOwnProperty('elementStyle')) {
+                    if (data.type === UPDATE_COLORIS) {
+                        $("#text" + data.id).parent().attr("style", data.elementStyle);
+                    }
+                }
+                if (data.hasOwnProperty('inputType')) {
+                    $("#text" + data.id).attr("type", data.inputType);
+                }
+                syncColoris(data.id);
                 break;
 
             case UPDATE_TEXT_INPUT:
@@ -1195,6 +1217,54 @@ var rangeSlider = function (isDiscrete) {
 };
 
 
+// One shared popup; inputs are added dynamically by WebSocket GUI messages.
+var colorisConfigured = false;
+function initColoris(data) {
+    if (!colorisConfigured) {
+        Coloris({
+            el: '.espui-coloris input', wrap: false,
+            format: 'hex', formatToggle: false, alpha: false,
+            closeButton: true, closeLabel: 'OK',
+            swatches: ['#000000', '#FFFFFF', '#FF0000', '#00FF00',
+                       '#0000FF', '#FFFF00', '#00FFFF', '#FF00FF']
+        });
+        colorisConfigured = true;
+    }
+    var input = document.getElementById('text' + data.id);
+    input.value = /^#[0-9a-f]{6}$/i.test(data.value) ? data.value.toUpperCase() : '#000000';
+    input.dataset.lastColor = input.value;
+    var button = document.getElementById('colorbtn' + data.id);
+    button.onclick = function () {
+        if (!input.disabled) input.click();
+    };
+    input.addEventListener('input', function () { syncColoris(data.id); });
+    syncColoris(data.id);
+}
+
+function syncColoris(id) {
+    var input = document.getElementById('text' + id);
+    var valid = /^#[0-9a-f]{6}$/i.test(input.value);
+    input.setCustomValidity(valid ? '' : 'Enter a color as #RRGGBB');
+    if (valid) {
+        document.getElementById('colorbtn' + id).style.backgroundColor = input.value;
+    }
+}
+
+function commitColoris(id) {
+    var input = document.getElementById('text' + id);
+    if (!/^#[0-9a-f]{6}$/i.test(input.value)) {
+        input.value = input.dataset.lastColor || '#000000';
+        syncColoris(id);
+        return;
+    }
+    input.value = input.value.toUpperCase();
+    syncColoris(id);
+    if (input.value !== input.dataset.lastColor) {
+        input.dataset.lastColor = input.value;
+        textchange(id);
+    }
+}
+
 var addToHTML = function (data) {
     panelStyle = data.hasOwnProperty('panelStyle') ? " style='" + data.panelStyle + "' " : "";
     panelwide = data.hasOwnProperty('wide') ? "wide" : "";
@@ -1215,6 +1285,7 @@ var addToHTML = function (data) {
             case UI_SLIDER:
             case UI_NUMBER:
             case UI_TEXT_INPUT:
+            case UI_COLORIS:
             case UI_SELECT:
             case UI_GRAPH:
             case UI_GAUGE:
@@ -1298,6 +1369,13 @@ var elementHTML = function (data) {
         case UI_TEXT_INPUT:
             return "<input " + inputType + "style='color:black; " + data.elementStyle + "' id='text" + id +
                 "' value='" + data.value + "' oninput='textchange(" + id + ")' />";
+        case UI_COLORIS:
+            // Assign the value through the DOM in initColoris, not HTML interpolation.
+            return "<div class='espui-coloris' " + elementStyle + ">" +
+                "<button type='button' id='colorbtn" + id + "' aria-label='Open color picker'></button>" +
+                "<input type='text' id='text" + id + "' maxlength='7' pattern='#[0-9a-fA-F]{6}' " +
+                "aria-label='Color in hexadecimal RGB' autocomplete='off' spellcheck='false' " +
+                "onchange='commitColoris(" + id + ")' /></div>";
         case UI_SELECT:
             return "<select style='color:black; " + data.elementStyle + "' id='select" + id +
                 "' onchange='selectchange(" + id + ")' />";
@@ -1343,6 +1421,15 @@ var processEnabled = function (data) {
         case UI_TEXT_INPUT:
         case UPDATE_TEXT_INPUT:
             $("#text" + data.id).prop("disabled", !data.enabled);
+            break;
+
+        case UI_COLORIS:
+        case UPDATE_COLORIS:
+            $("#text" + data.id).prop("disabled", !data.enabled);
+            $("#colorbtn" + data.id).prop("disabled", !data.enabled);
+            if (!data.enabled && document.activeElement === document.getElementById("text" + data.id)) {
+                Coloris.close();
+            }
             break;
 
         case UI_SELECT:

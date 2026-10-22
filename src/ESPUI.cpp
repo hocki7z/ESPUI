@@ -5,6 +5,8 @@
 #include <ESPAsyncWebServer.h>
 
 #include "dataControlsJS.h"
+#include "dataColorisJS.h"
+#include "dataColorisCSS.h"
 #include "dataGraphJS.h"
 #include "dataIndexHTML.h"
 #include "dataNormalizeCSS.h"
@@ -19,6 +21,25 @@
 #include "ESPUIcontrolMgr.h"
 
 static const char* emptyCstring = "";
+
+// Serve the same flash-resident assets in memory and LittleFS modes.
+void ESPUIClass::registerColorisRoutes()
+{
+    server->on("/js/coloris.min.js", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        if (basicAuth && !request->authenticate(basicAuthUsername, basicAuthPassword))
+            return request->requestAuthentication();
+        auto* response = request->beginResponse(200, "application/javascript", JS_COLORIS_GZIP, sizeof(JS_COLORIS_GZIP));
+        response->addHeader("Content-Encoding", "gzip");
+        request->send(response);
+    });
+    server->on("/css/coloris.min.css", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        if (basicAuth && !request->authenticate(basicAuthUsername, basicAuthPassword))
+            return request->requestAuthentication();
+        auto* response = request->beginResponse(200, "text/css", CSS_COLORIS_GZIP, sizeof(CSS_COLORIS_GZIP));
+        response->addHeader("Content-Encoding", "gzip");
+        request->send(response);
+    });
+}
 
 
 // Optional user-defined JavaScript to be included in the UI.
@@ -1229,6 +1250,7 @@ void ESPUIClass::beginLITTLEFS(const char* _title, const char* username, const c
     }
 
     server = new AsyncWebServer(port);
+    registerColorisRoutes();
     ws = new AsyncWebSocket("/ws");
 
     bool fsBegin = EspuiLittleFS.begin();
@@ -1352,6 +1374,7 @@ void ESPUIClass::begin(const char* _title, const char* username, const char* pas
     ui_title = _title;
 
     server = new AsyncWebServer(port);
+    registerColorisRoutes();
     ws = new AsyncWebSocket("/ws");
 
     ws->onEvent([](AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data,
