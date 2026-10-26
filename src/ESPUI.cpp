@@ -2,6 +2,13 @@
 
 #include <functional>
 #include <new>
+#include <cstring>
+#include <utility>
+#include <sdkconfig.h>
+#if defined(CONFIG_ESP_HTTPS_SERVER_ENABLE) && CONFIG_ESP_HTTPS_SERVER_ENABLE \
+    && defined(CONFIG_HTTPD_WS_SUPPORT) && CONFIG_HTTPD_WS_SUPPORT
+#include <PsychicHttpsServer.h>
+#endif
 
 #include "dataControlsJS.h"
 #include "dataGraphJS.h"
@@ -24,15 +31,17 @@ namespace
 class ClientMapLock
 {
 public:
-    explicit ClientMapLock(SemaphoreHandle_t mutex) : mutex(mutex)
+    explicit ClientMapLock(SemaphoreHandle_t mutex, TickType_t wait = portMAX_DELAY) : mutex(mutex)
     {
-        xSemaphoreTakeRecursive(mutex, portMAX_DELAY);
+        locked = xSemaphoreTakeRecursive(mutex, wait) == pdTRUE;
     }
-    ~ClientMapLock() { xSemaphoreGiveRecursive(mutex); }
+    ~ClientMapLock() { if (locked) xSemaphoreGiveRecursive(mutex); }
+    explicit operator bool() const { return locked; }
     ClientMapLock(const ClientMapLock&) = delete;
     ClientMapLock& operator=(const ClientMapLock&) = delete;
 private:
     SemaphoreHandle_t mutex;
+    bool locked;
 };
 }
 
@@ -491,6 +500,8 @@ std::vector<ESPUIClass::ClientPtr> ESPUIClass::snapshotClients(int socket)
 void ESPUIClass::onWsOpen(PsychicWebSocketClient* client)
 {
     serverTask.store(xTaskGetCurrentTaskHandle());
+    if (!acceptingWork.load())
+        return;
     const int socket = client->socket();
     ClientPtr current = std::make_shared<ESPUIclient>(socket);
     ClientPtr previous;
@@ -512,6 +523,8 @@ void ESPUIClass::onWsOpen(PsychicWebSocketClient* client)
 esp_err_t ESPUIClass::onWsFrame(PsychicWebSocketRequest* request, httpd_ws_frame* frame)
 {
     serverTask.store(xTaskGetCurrentTaskHandle());
+    if (!acceptingWork.load())
+        return ESP_FAIL;
     // ESPUI commands are complete text messages, not binary/fragment streams.
     // Fail rather than interpreting a partial command as a control update.
     if (frame->fragmented || frame->type == HTTPD_WS_TYPE_CONTINUE)
@@ -1205,13 +1218,18 @@ bool ESPUIClass::SendJsonDocToWebSocket(ArduinoJson::JsonDocument& document, int
 
 bool ESPUIClass::dispatch(std::function<void()> work)
 {
-    if (!server || !server->isRunning())
+    if (!acceptingWork.load())
         return false;
     if (serverTask.load() == xTaskGetCurrentTaskHandle())
     {
         work();
         return true;
     }
+    // Never block httpd behind an application submitter. This lock protects
+    // pointer/handle publication and closes the submit-versus-stop race.
+    ClientMapLock submit(dispatchMutex, 0);
+    if (!submit || !acceptingWork.load() || !server || !server->isRunning())
+        return false;
     // Bound application work as well as Psychic's per-client send queue.
     if (pendingWork.fetch_add(1) >= 32)
     {
@@ -1228,7 +1246,8 @@ bool ESPUIClass::dispatch(std::function<void()> work)
     const esp_err_t err = httpd_queue_work(server->server, [](void* arg) {
         std::unique_ptr<Work> item(static_cast<Work*>(arg));
         item->owner->serverTask.store(xTaskGetCurrentTaskHandle());
-        item->run();
+        if (item->owner->acceptingWork.load())
+            item->run();
         item->owner->pendingWork.fetch_sub(1);
     }, item);
     if (err != ESP_OK)
@@ -1239,6 +1258,58 @@ bool ESPUIClass::dispatch(std::function<void()> work)
         return false;
     }
     return true;
+}
+
+bool ESPUIClass::drainServer()
+{
+    // Called only with submissions/callback-generated sends disabled. The first
+    // fence drains ESPUI work and any callback already in progress; that callback
+    // may itself have queued a Psychic async send AFTER our first fence. The
+    // second fence drains those sends before httpd_stop tears down the handle.
+    struct Fence { ESPUIClass* owner; SemaphoreHandle_t done; };
+    Fence fence{this, xSemaphoreCreateBinary()};
+    if (!fence.done)
+        return false;
+    bool drained = true;
+    for (unsigned i = 0; i < 2; ++i)
+    {
+        const esp_err_t err = httpd_queue_work(server->server, [](void* arg) {
+            auto* fence = static_cast<Fence*>(arg);
+            fence->owner->serverTask.store(xTaskGetCurrentTaskHandle());
+            xSemaphoreGive(fence->done);
+        }, &fence);
+        if (err != ESP_OK)
+        {
+            Serial.printf("ESPUI: shutdown fence failed (%s)\n", esp_err_to_name(err));
+            drained = false;
+            break;
+        }
+        xSemaphoreTake(fence.done, portMAX_DELAY);
+    }
+    vSemaphoreDelete(fence.done);
+    return drained && pendingWork.load() == 0;
+}
+
+void ESPUIClass::startServer()
+{
+    // Serialize isRunning()/handle publication with application dispatch. httpd
+    // callbacks use dispatch's lock-free same-task path, so cannot deadlock here.
+    ClientMapLock submit(dispatchMutex);
+    startupAttempted = true;
+    // httpd can accept a request before start() returns. Publish admission first;
+    // application dispatch still checks isRunning() under dispatchMutex.
+    acceptingWork.store(true);
+    const esp_err_t err = server->start();
+    if (err != ESP_OK)
+    {
+        // Psychic may return a late registration error with _running still set.
+        acceptingWork.store(server->isRunning());
+        Serial.printf("ESPUI: %s start failed (%s); no fallback\n", activeTls ? "HTTPS" : "HTTP", esp_err_to_name(err));
+    }
+#if defined(DEBUG_ESPUI)
+    else if (verbosity)
+        Serial.printf("UI Initialized (Psychic%s)\n", activeTls ? "Https" : "Http");
+#endif
 }
 
 void ESPUIClass::jsonDom(uint16_t, int, bool)
@@ -1299,12 +1370,32 @@ void ESPUIClass::beginSPIFFS(const char* _title, const char* username, const cha
 
 void ESPUIClass::beginLITTLEFS(const char* _title, const char* username, const char* password, uint16_t port)
 {
-    beginServer(_title, username, password, port, true);
+    beginServer(_title, username, password, port, true, false);
 }
 
 void ESPUIClass::begin(const char* _title, const char* username, const char* password, uint16_t port)
 {
-    beginServer(_title, username, password, port, false);
+    beginServer(_title, username, password, port, false, false);
+}
+
+bool ESPUIClass::setCertificate(const char* cert, const char* key)
+{
+    ClientMapLock startup(startupMutex, 0);
+    if (!startup || startupAttempted || !cert || !*cert || !key || !*key)
+        return false;
+    // Transactional copies: do not disturb the last valid pair on OOM.
+    String certificate(cert);
+    String privateKey(key);
+    if (certificate.length() != strlen(cert) || privateKey.length() != strlen(key))
+        return false;
+    certificatePem = std::move(certificate);
+    privateKeyPem = std::move(privateKey);
+    return true;
+}
+
+void ESPUIClass::beginHTTPS(const char* title, const char* username, const char* password, uint16_t port)
+{
+    beginServer(title, username, password, port, false, true);
 }
 
 bool ESPUIClass::authenticateRequest(PsychicRequest* request)
@@ -1313,25 +1404,53 @@ bool ESPUIClass::authenticateRequest(PsychicRequest* request)
 }
 
 void ESPUIClass::beginServer(const char* title, const char* username, const char* password,
-    uint16_t port, bool useLittleFS)
+    uint16_t port, bool useLittleFS, bool tls)
 {
-    // First configuration wins. Never duplicate routes/handlers or replace a
-    // live server. A failed start (e.g. no IP yet) can be retried safely.
-    if (server)
+    // Blocking stop/fences would deadlock if invoked by httpd itself. All native
+    // entry points below record its task, including plain HTTP requests.
+    if (serverTask.load() == xTaskGetCurrentTaskHandle())
     {
-        const esp_err_t err = server->start();
-        if (err != ESP_OK)
-            Serial.printf("ESPUI: HTTP start failed (%s)\n", esp_err_to_name(err));
+        Serial.println(F("ESPUI: begin/switch must run on the application task, not a server callback"));
         return;
+    }
+    ClientMapLock startup(startupMutex, 0);
+    if (!startup)
+    {
+        Serial.println(F("ESPUI: another startup/certificate operation is in progress"));
+        return;
+    }
+    if (tls)
+    {
+#if !defined(CONFIG_ESP_HTTPS_SERVER_ENABLE) || !CONFIG_ESP_HTTPS_SERVER_ENABLE \
+    || !defined(CONFIG_HTTPD_WS_SUPPORT) || !CONFIG_HTTPD_WS_SUPPORT
+        Serial.println(F("ESPUI: HTTPS unavailable; enable CONFIG_ESP_HTTPS_SERVER_ENABLE and CONFIG_HTTPD_WS_SUPPORT; no HTTP fallback; existing server unchanged"));
+        return;
+#else
+        if (certificatePem.isEmpty() || privateKeyPem.isEmpty())
+        {
+            Serial.println(F("ESPUI: HTTPS requires setCertificate(cert, key) before any server startup; no HTTP fallback; existing server unchanged"));
+            return;
+        }
+#endif
     }
 
     // Do not silently disable authentication for an incomplete credential pair.
-    if ((username == nullptr) != (password == nullptr))
+    if (!configured && (username == nullptr) != (password == nullptr))
     {
         Serial.println(F("ESPUI: supply both username and password, or neither"));
         return;
     }
-    if (useLittleFS)
+    PsychicHttpServer*& cachedServer = tls ? httpsServer : httpServer;
+    PsychicWebSocketHandler*& cachedWs = tls ? httpsWs : httpWs;
+    if (server && activeTls == tls)
+    {
+        // start() is itself idempotent. Also resumes a quiesced old server if a
+        // previous switch failed its drain/stop, without duplicating routes.
+        startServer();
+        return;
+    }
+    const bool needsRoutes = cachedServer == nullptr;
+    if (!cachedServer && useLittleFS)
     {
         if (!EspuiLittleFS.begin())
         {
@@ -1345,18 +1464,107 @@ void ESPUIClass::beginServer(const char* title, const char* username, const char
         }
     }
 
-    ui_title = title ? title : "ESPUI";
-    basicAuth = username != nullptr;
-    authUsername = username ? username : "";
-    authPassword = password ? password : "";
-    basicAuthUsername = authUsername.c_str();
-    basicAuthPassword = authPassword.c_str();
+    if (server && activeTls != tls)
+    {
+        {
+            ClientMapLock submit(dispatchMutex);
+            acceptingWork.store(false);
+        }
+        // Do not hold either the client-map or submit lock while waiting on
+        // httpd: queued work and close callbacks must be able to finish.
+        if (server->isRunning())
+        {
+            if (!drainServer())
+            {
+                Serial.println(F("ESPUI: switch aborted; could not drain old server (quiesced)"));
+                return;
+            }
+            const esp_err_t err = server->stop();
+            if (err != ESP_OK)
+            {
+                Serial.printf("ESPUI: switch aborted; old server stop failed (%s); old server quiesced\n", esp_err_to_name(err));
+                return;
+            }
+        }
+        {
+            ClientMapLock clients(clientsMutex);
+            for (const auto& entry : MapOfClients)
+                entry.second->Disconnect();
+            MapOfClients.clear();
+        }
+        serverTask.store(nullptr);
+        configASSERT(pendingWork.load() == 0);
+    }
 
-    server = new PsychicHttpServer(port);
-    ws = new PsychicWebSocketHandler();
+    if (!cachedServer)
+    {
+#if defined(CONFIG_ESP_HTTPS_SERVER_ENABLE) && CONFIG_ESP_HTTPS_SERVER_ENABLE \
+    && defined(CONFIG_HTTPD_WS_SUPPORT) && CONFIG_HTTPD_WS_SUPPORT
+        if (tls)
+        {
+            auto* secure = new (std::nothrow) PsychicHttpsServer(port);
+            if (secure)
+            {
+                secure->setCertificate(certificatePem.c_str(), privateKeyPem.c_str());
+                secure->config.stack_size = 12288;
+                secure->config.max_open_sockets = 2;
+                secure->ssl_config.httpd.stack_size = 12288;
+                secure->ssl_config.httpd.max_open_sockets = 2;
+            }
+            cachedServer = secure;
+        }
+        else
+#endif
+        {
+            cachedServer = new (std::nothrow) PsychicHttpServer(port);
+            if (cachedServer)
+                cachedServer->config.stack_size = 12288;
+        }
+        cachedWs = new (std::nothrow) PsychicWebSocketHandler();
+        if (!cachedServer || !cachedWs)
+        {
+            delete cachedWs;
+            delete cachedServer;
+            cachedWs = nullptr;
+            cachedServer = nullptr;
+            Serial.println(F("ESPUI: server/WebSocket allocation failed; no fallback; retry begin"));
+            return;
+        }
+    }
+    if (!configured)
+    {
+        ui_title = title ? title : "ESPUI";
+        basicAuth = username != nullptr;
+        authUsername = username ? username : "";
+        authPassword = password ? password : "";
+        basicAuthUsername = authUsername.c_str();
+        basicAuthPassword = authPassword.c_str();
+        configured = true;
+    }
+    {
+        ClientMapLock submit(dispatchMutex);
+        server = cachedServer;
+        ws = cachedWs;
+        activeTls = tls;
+    }
+
+    // A cached mode is already fully configured. Never duplicate routes.
+    // A stopped/failed server can be retried with its original configuration.
+    if (!needsRoutes)
+    {
+        startServer();
+        return;
+    }
+
+    // Even plain HTTP callbacks must identify httpd before application code can
+    // invoke begin(); otherwise an initial callback could try to stop itself.
+    server->onOpen([this](PsychicClient*) { serverTask.store(xTaskGetCurrentTaskHandle()); });
 
     // HTTP meta-endpoints (including static files) pass through this chain.
     server->addMiddleware([this](PsychicRequest* request, PsychicResponse*, PsychicMiddlewareNext next) -> esp_err_t {
+        serverTask.store(xTaskGetCurrentTaskHandle());
+        if (!acceptingWork.load())
+            return request->response()->send(503);
         if (!authenticateRequest(request))
             return request->requestAuthentication(BASIC_AUTH, "ESPUI", "Authentication required");
         return next();
@@ -1366,6 +1574,9 @@ void ESPUIClass::beginServer(const char* title, const char* username, const char
     // the upgrade explicitly, BEFORE Psychic registers the connected client.
     // Established frames have no HTTP Authorization header and need no recheck.
     ws->addMiddleware([this](PsychicRequest* request, PsychicResponse*, PsychicMiddlewareNext next) -> esp_err_t {
+        serverTask.store(xTaskGetCurrentTaskHandle());
+        if (!acceptingWork.load())
+            return request->response()->send(503);
         if (request->method() == HTTP_GET && !authenticateRequest(request))
             return request->requestAuthentication(BASIC_AUTH, "ESPUI", "Authentication required");
         return next();
@@ -1415,20 +1626,16 @@ void ESPUIClass::beginServer(const char* title, const char* username, const char
     }
 
     server->onNotFound([this](PsychicRequest* request, PsychicResponse* response) -> esp_err_t {
+        serverTask.store(xTaskGetCurrentTaskHandle());
+        if (!acceptingWork.load())
+            return response->send(503);
         // Native 404 dispatch can also bypass server middleware.
         if (!authenticateRequest(request))
             return request->requestAuthentication(BASIC_AUTH, "ESPUI", "Authentication required");
         // Exactly one response, with no callback delay/yield.
         return captivePortal ? response->redirect("/") : response->send(404);
     });
-
-    const esp_err_t err = server->start();
-    if (err != ESP_OK)
-        Serial.printf("ESPUI: HTTP start failed (%s)\n", esp_err_to_name(err));
-#if defined(DEBUG_ESPUI)
-    else if (verbosity)
-        Serial.println(F("UI Initialized (PsychicHttp)"));
-#endif
+    startServer();
 }
 
 void ESPUIClass::setVerbosity(Verbosity v)

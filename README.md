@@ -11,8 +11,16 @@ describe the upstream implementation and do not apply to this backend.
 - `begin()` and `beginLITTLEFS()` use HTTP on port 80 by default. Supplying both
   username and password protects HTTP routes and WebSocket upgrades with Basic
   authentication. Plain HTTP does not encrypt those credentials.
-- Repeated startup is safe; the first title, mode, credentials and port remain
-  configured. A failed server start can be retried by calling `begin()` again.
+- Repeated startup is safe; the first title/credentials and each mode's first
+  port/storage choice remain configured. A failed start can be retried.
+- `setCertificate(cert, key)` copies both nonempty PEM strings before the first
+  server start attempt. `beginHTTPS(title, username, password, port)` starts a
+  memory-backed HTTPS UI (default port 443), with no plaintext fallback.
+  Existing `begin()` / `beginLITTLEFS()` remain HTTP.
+- Calling HTTP startup after HTTPS, or vice versa, stops and drains the old
+  server, invalidates its clients, and starts the target mode. Both route graphs
+  are retained but only one server runs. Call startup only from the application
+  task, never a request callback. Reload the correct browser URL after switching.
 - `WebServer()` now returns `PsychicHttpServer*`; `WebSocket()` returns
   `PsychicWebSocketHandler*`. Async callback/type APIs are no longer available.
   `jsonDom()` accepts an integer socket instead of an Async client pointer.
@@ -25,9 +33,9 @@ describe the upstream implementation and do not apply to this backend.
 - WebSocket commands must be complete text messages. ESPUI's application-level
   fragmented-control transfer remains supported; fragmented WebSocket input is
   not supported by this adapter.
-- HTTPS is not enabled by this migration. It requires a certificate/private key,
-  framework HTTPS/WebSocket support, and memory/concurrency testing on hardware.
-  Keep captive-portal discovery on HTTP.
+- HTTPS requires framework HTTPS/WebSocket support and a matching PEM identity.
+  Both server task stacks are 12 KB; HTTPS defaults to two TLS sockets. Validate
+  memory/concurrency on hardware. Keep captive-portal discovery on HTTP.
 
 Validation checklist: compile the consuming application, then test initial load,
 all controls, large label/control transfers, two tabs, disconnect/reconnect,

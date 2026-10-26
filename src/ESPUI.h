@@ -33,6 +33,7 @@
 	#include <LittleFS.h>
 #endif
 #include <map>
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -117,7 +118,11 @@ public:
     ESPUIClass()
     {
         clientsMutex = xSemaphoreCreateRecursiveMutex();
+        startupMutex = xSemaphoreCreateRecursiveMutex();
+        dispatchMutex = xSemaphoreCreateRecursiveMutex();
         configASSERT(clientsMutex != nullptr);
+        configASSERT(startupMutex != nullptr);
+        configASSERT(dispatchMutex != nullptr);
     }
     ESPUIClass(const ESPUIClass&) = delete;
     ESPUIClass& operator=(const ESPUIClass&) = delete;
@@ -135,6 +140,16 @@ public:
     void setVerbosity(Verbosity verbosity);
     void begin(const char* _title, const char* username = nullptr, const char* password = nullptr,
         uint16_t port = 80); // Setup server and page in Memorymode
+    // Copy nonempty, NUL-terminated PEM strings. False on invalid input, allocation
+    // failure, a concurrent configuration operation, or after the first configured
+    // server's start attempt (even a failed start). Rejection preserves the pair.
+    // This stores PEM only; parsing/cryptographic validation happens at TLS start.
+    bool setCertificate(const char* cert, const char* key);
+    // Memorymode HTTPS; never falls back to HTTP. Call from the application task,
+    // not a server callback. First title/credentials and each mode's port/storage
+    // win. Errors are reported on Serial; a failed target start stays stopped.
+    void beginHTTPS(const char* title, const char* username = nullptr, const char* password = nullptr,
+        uint16_t port = 443);
     void beginSPIFFS(const char* _title, const char* username = nullptr, const char* password = nullptr,
         uint16_t port = 80); // Setup server and page in LITTLEFS mode (DEPRECATED, use beginLITTLEFS)
     void beginLITTLEFS(const char* _title, const char* username = nullptr, const char* password = nullptr,
@@ -309,6 +324,8 @@ Control::ControlId_t addControl(Control::Type type, const char* label, const cha
         return accelerometer(label, [callback, userData](Control* sender, int type){ callback(sender, type, userData); }, color);
     }*/
 
+    // Current selected instance, possibly stopped after a failed start. Do not
+    // retain handles or directly start/stop/send concurrently with begin calls.
     PsychicHttpServer* WebServer() {return server;}
     PsychicWebSocketHandler* WebSocket() {return ws;}
 
@@ -331,10 +348,24 @@ protected:
     PsychicHttpServer* server = nullptr;
     PsychicWebSocketHandler* ws = nullptr;
 
-    // Startup is called from the application task. Once configured, subsequent
-    // begin calls only retry start(); changing mode/port/credentials needs reboot.
+    // Startup/switching is application-task only. Keep both route graphs alive:
+    // PsychicEndpoint does not own/delete its handler. Only one server runs.
     void beginServer(const char* title, const char* username, const char* password,
-        uint16_t port, bool useLittleFS);
+        uint16_t port, bool useLittleFS, bool tls);
+    bool drainServer();
+    void startServer();
+    PsychicHttpServer* httpServer = nullptr;
+    PsychicWebSocketHandler* httpWs = nullptr;
+    PsychicHttpServer* httpsServer = nullptr;
+    PsychicWebSocketHandler* httpsWs = nullptr;
+    bool activeTls = false;
+    bool configured = false;
+    bool startupAttempted = false;
+    String certificatePem;
+    String privateKeyPem;
+    SemaphoreHandle_t startupMutex = nullptr;
+    SemaphoreHandle_t dispatchMutex = nullptr;
+    std::atomic<bool> acceptingWork{false};
     void onWsOpen(PsychicWebSocketClient* client);
     esp_err_t onWsFrame(PsychicWebSocketRequest* request, httpd_ws_frame* frame);
     void onWsClose(PsychicWebSocketClient* client);
