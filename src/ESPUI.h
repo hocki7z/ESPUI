@@ -2,9 +2,12 @@
 
 // comment out to turn off debug output
 #define DEBUG_ESPUI true
-#define WS_AUTHENTICATION false
 
 #include <Arduino.h>
+
+#if !defined(ESP32) || defined(ESP8266)
+#error "This ESPUI PsychicHttp backend supports ESP32 only."
+#endif
 
 #include <ArduinoJson.h>
 #if ARDUINOJSON_VERSION_MAJOR > 6
@@ -30,24 +33,17 @@
 	#include <LittleFS.h>
 #endif
 #include <map>
-#include <ESPAsyncWebServer.h>
+#include <functional>
+#include <memory>
+#include <vector>
+#include <PsychicHttp.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 #include "ESPUIcontrol.h"
 #include "ESPUIclient.h"
 
-#if defined(ESP32)
-#include <AsyncTCP.h>
 #include "WiFi.h"
-
-#else
-
-#include <ArduinoOTA.h>
-#include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
-#include <ESPAsyncTCP.h>
-#include <Hash.h>
-
-#endif
 
 #include <ESPUIcontrolMgr.h>
 
@@ -120,7 +116,11 @@ class ESPUIClass
 public:
     ESPUIClass()
     {
-	}
+        clientsMutex = xSemaphoreCreateRecursiveMutex();
+        configASSERT(clientsMutex != nullptr);
+    }
+    ESPUIClass(const ESPUIClass&) = delete;
+    ESPUIClass& operator=(const ESPUIClass&) = delete;
     unsigned int jsonUpdateDocumentSize = 8192;
 #ifdef ESP8266
     unsigned int jsonInitialDocumentSize = 2000;
@@ -130,7 +130,6 @@ public:
     unsigned int jsonChunkNumberMax = 4;
 #endif
     bool sliderContinuous = false;
-    void onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data, size_t len);
 	bool captivePortal = true;
 
     void setVerbosity(Verbosity verbosity);
@@ -267,7 +266,7 @@ void setPanelStyle(Control::ControlId_t id, const char *style, int clientId = -1
     // Variables
     const char* ui_title = "ESPUI"; // Store UI Title and Header Name
     void jsonReload();
-    void jsonDom(uint16_t startidx, AsyncWebSocketClient* client = nullptr, bool Updating = false);
+    void jsonDom(uint16_t startidx, int socket = -1, bool Updating = false);
 
     Verbosity verbosity = Verbosity::Quiet;
     uint32_t  GetNextControlChangeId();
@@ -310,8 +309,8 @@ Control::ControlId_t addControl(Control::Type type, const char* label, const cha
         return accelerometer(label, [callback, userData](Control* sender, int type){ callback(sender, type, userData); }, color);
     }*/
 
-    AsyncWebServer* WebServer() {return server;}
-    AsyncWebSocket* WebSocket() {return ws;}
+    PsychicHttpServer* WebServer() {return server;}
+    PsychicWebSocketHandler* WebSocket() {return ws;}
 
     bool isSynchronized();
 
@@ -329,12 +328,23 @@ protected:
     friend class ESPUIclient;
     friend class ESPUIcontrol;
 
-    AsyncWebServer* server;
-    AsyncWebSocket* ws;
+    PsychicHttpServer* server = nullptr;
+    PsychicWebSocketHandler* ws = nullptr;
+
+    // Startup is called from the application task. Once configured, subsequent
+    // begin calls only retry start(); changing mode/port/credentials needs reboot.
+    void beginServer(const char* title, const char* username, const char* password,
+        uint16_t port, bool useLittleFS);
+    void onWsOpen(PsychicWebSocketClient* client);
+    esp_err_t onWsFrame(PsychicWebSocketRequest* request, httpd_ws_frame* frame);
+    void onWsClose(PsychicWebSocketClient* client);
+    bool authenticateRequest(PsychicRequest* request);
+    String authUsername;
+    String authPassword;
 
     const char* basicAuthUsername = nullptr;
     const char* basicAuthPassword = nullptr;
-    bool basicAuth = true;
+    bool basicAuth = false;
 
     Control::ControlId_t addControl(Control::Type type, const char* label, const String& value, Control::Color color, Control::ControlId_t parentControl, Control* control);
 
@@ -342,9 +352,20 @@ protected:
     void NotifyClients(ClientUpdateType_t newState);
     void NotifyClient(uint32_t WsClientId, ClientUpdateType_t newState);
 
-    bool SendJsonDocToWebSocket(ArduinoJson::JsonDocument& document, uint16_t clientId);
+    bool SendJsonDocToWebSocket(ArduinoJson::JsonDocument& document, int clientId);
 
-    std::map<uint32_t, ESPUIclient*> MapOfClients;
+    // Snapshot ownership keeps a disconnect from deleting a client in use.
+    // Never hold this mutex while calling client code: sends may wait for httpd.
+    // This protects membership/lifetime, not ESPUIclient's FSM or Psychic's
+    // client list; the client port must serialize state changes and transport use.
+    using ClientPtr = std::shared_ptr<ESPUIclient>;
+    std::map<uint32_t, ClientPtr> MapOfClients;
+    SemaphoreHandle_t clientsMutex = nullptr;
+    std::vector<ClientPtr> snapshotClients(int socket = -1);
+    // Serialize the acknowledgement FSM and Psychic client access on httpd.
+    std::atomic<TaskHandle_t> serverTask{nullptr};
+    std::atomic<unsigned> pendingWork{0};
+    bool dispatch(std::function<void()> work);
 
     uint32_t    ControlChangeID = 0;
     void (*on_ws_connect)() = nullptr;

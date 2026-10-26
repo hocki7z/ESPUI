@@ -1,10 +1,13 @@
 #pragma once
 
 #include <Arduino.h>
-#include <ESPAsyncWebServer.h>
+#include <PsychicHttp.h>
+#include <atomic>
 #include <ArduinoJson.h>
 #include "ESPUIclientFsm.h"
 #include "ESPUIcontrol.h"
+
+enum class ESPUIWebSocketEvent { Connected, Data };
 
 class ESPUIclient
 {
@@ -23,7 +26,9 @@ protected:
 
     ClientUpdateType_t ClientUpdateType = ClientUpdateType_t::RebuildNeeded;
 
-    AsyncWebSocketClient * client = nullptr;
+    int socket = -1;
+    std::atomic<bool> connected{true};
+    std::atomic<bool> synchronized{false};
 
     friend class fsm_EspuiClient_state_Idle;
     friend class fsm_EspuiClient_state_SendingUpdate;
@@ -53,13 +58,15 @@ private:
     uint32_t    NextSyncID = 0;
 
 public:
-                ESPUIclient(AsyncWebSocketClient * _client);
-                ESPUIclient(const ESPUIclient & source);
+                explicit ESPUIclient(int socket);
+                ESPUIclient(const ESPUIclient & source) = delete;
     virtual     ~ESPUIclient();
     void        NotifyClient(ClientUpdateType_t value);
-    bool        onWsEvent(AwsEventType type, void* arg, uint8_t* data, size_t len);
+    bool        onWsEvent(ESPUIWebSocketEvent type, const uint8_t* data, size_t len);
     bool        IsSyncronized();
-    uint32_t    id() { return client->id(); }
+    void        MarkPending() { synchronized.store(false); }
+    void        Disconnect() { connected.store(false); synchronized.store(false); }
+    uint32_t    id() { return static_cast<uint32_t>(socket); }
     void        SetState(ClientUpdateType_t value);
     bool        SendJsonDocToWebSocket(ArduinoJson::JsonDocument& document);
 

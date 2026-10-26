@@ -1,8 +1,7 @@
 #include "ESPUI.h"
 
 #include <functional>
-
-#include <ESPAsyncWebServer.h>
+#include <new>
 
 #include "dataControlsJS.h"
 #include "dataGraphJS.h"
@@ -20,6 +19,22 @@
 
 static const char* emptyCstring = "";
 
+namespace
+{
+class ClientMapLock
+{
+public:
+    explicit ClientMapLock(SemaphoreHandle_t mutex) : mutex(mutex)
+    {
+        xSemaphoreTakeRecursive(mutex, portMAX_DELAY);
+    }
+    ~ClientMapLock() { xSemaphoreGiveRecursive(mutex); }
+    ClientMapLock(const ClientMapLock&) = delete;
+    ClientMapLock& operator=(const ClientMapLock&) = delete;
+private:
+    SemaphoreHandle_t mutex;
+};
+}
 
 // Optional user-defined JavaScript to be included in the UI.
 // Served at /js/custom.js, which is automatically included in index.htm.
@@ -454,55 +469,80 @@ void ESPUIClass::prepareFileSystem(bool format)
     EspuiLittleFS.end();
 }
 
-// Handle Websockets Communication
-void ESPUIClass::onWsEvent(
-    AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data, size_t len)
+std::vector<ESPUIClass::ClientPtr> ESPUIClass::snapshotClients(int socket)
 {
-    // Serial.println(String("ESPUIClass::OnWsEvent: type: ") + String(type));
-    ESPUIcontrolMgr.RemoveToBeDeletedControls();
-
-    if (WS_EVT_DISCONNECT == type)
+    std::vector<ClientPtr> clients;
+    ClientMapLock lock(clientsMutex);
+    if (socket >= 0)
     {
-#if defined(DEBUG_ESPUI)
-        if (verbosity)
-        {
-            Serial.println(F("WS_EVT_DISCONNECT"));
-        }
-#endif
-
-        if (MapOfClients.end() != MapOfClients.find(client->id()))
-        {
-            // Serial.println("Delete client.");
-            delete MapOfClients[client->id()];
-            MapOfClients.erase(client->id());
-        }
+        auto found = MapOfClients.find(static_cast<uint32_t>(socket));
+        if (found != MapOfClients.end())
+            clients.push_back(found->second);
     }
     else
     {
-        if(type == WS_EVT_CONNECT)
-        {
-            ws->cleanupClients();
+        clients.reserve(MapOfClients.size());
+        for (const auto& entry : MapOfClients)
+            clients.push_back(entry.second);
+    }
+    return clients;
+}
 
-            if (on_ws_connect)
-            {
-                on_ws_connect();
-            }
-        }
+void ESPUIClass::onWsOpen(PsychicWebSocketClient* client)
+{
+    serverTask.store(xTaskGetCurrentTaskHandle());
+    const int socket = client->socket();
+    ClientPtr current = std::make_shared<ESPUIclient>(socket);
+    ClientPtr previous;
+    {
+        ClientMapLock lock(clientsMutex);
+        auto& entry = MapOfClients[static_cast<uint32_t>(socket)];
+        previous = std::move(entry);
+        if (previous)
+            previous->Disconnect();
+        entry = current;
+    }
+    ESPUIcontrolMgr.RemoveToBeDeletedControls();
+    if (on_ws_connect)
+        on_ws_connect();
+    if (current->onWsEvent(ESPUIWebSocketEvent::Connected, nullptr, 0))
+        NotifyClients(ESPUIclient::UpdateNeeded);
+}
 
-        if (MapOfClients.end() == MapOfClients.find(client->id()))
-        {
-            // Serial.println("ESPUIClass::OnWsEvent:Create new client.");
-            MapOfClients[client->id()] = new ESPUIclient(client);
-        }
+esp_err_t ESPUIClass::onWsFrame(PsychicWebSocketRequest* request, httpd_ws_frame* frame)
+{
+    serverTask.store(xTaskGetCurrentTaskHandle());
+    // ESPUI commands are complete text messages, not binary/fragment streams.
+    // Fail rather than interpreting a partial command as a control update.
+    if (frame->fragmented || frame->type == HTTPD_WS_TYPE_CONTINUE)
+        return ESP_FAIL;
+    if (frame->type != HTTPD_WS_TYPE_TEXT)
+        return ESP_OK;
 
-        if(MapOfClients[client->id()]->onWsEvent(type, arg, data, len))
+    auto clients = snapshotClients(request->client()->socket());
+    if (clients.empty())
+        return ESP_FAIL;
+    ESPUIcontrolMgr.RemoveToBeDeletedControls();
+    if (clients.front()->onWsEvent(ESPUIWebSocketEvent::Data, frame->payload, frame->len))
+        NotifyClients(ESPUIclient::UpdateNeeded);
+    return ESP_OK;
+}
+
+void ESPUIClass::onWsClose(PsychicWebSocketClient* client)
+{
+    serverTask.store(xTaskGetCurrentTaskHandle());
+    ClientPtr removed;
+    {
+        ClientMapLock lock(clientsMutex);
+        auto found = MapOfClients.find(static_cast<uint32_t>(client->socket()));
+        if (found != MapOfClients.end())
         {
-            // Serial.println("ESPUIClass::OnWsEvent:notify the clients that they need to be updated.");
-            NotifyClients(ESPUIclient::UpdateNeeded);
+            removed = std::move(found->second);
+            removed->Disconnect();
+            MapOfClients.erase(found);
         }
     }
-
-    return;
+    // Destroy outside the map lock, after any in-flight snapshots are released.
 }
 
 Control::ControlId_t ESPUIClass::addControl(Control::Type type, const char* label)
@@ -1149,29 +1189,59 @@ void ESPUIClass::addGraphPoint(Control::ControlId_t id, int nValue, int clientId
     } while (false);
 }
 
-bool ESPUIClass::SendJsonDocToWebSocket(ArduinoJson::JsonDocument& document, uint16_t clientId)
+bool ESPUIClass::SendJsonDocToWebSocket(ArduinoJson::JsonDocument& document, int clientId)
 {
-    bool Response = false;
-
-    if (0 > clientId)
-    {
-        if (MapOfClients.end() != MapOfClients.find(clientId))
-        {
-            Response = MapOfClients[clientId]->SendJsonDocToWebSocket(document);
-        }
-    }
-    else
-    {
-        for (auto CurrentClient : MapOfClients)
-        {
-            Response |= CurrentClient.second->SendJsonDocToWebSocket(document);
-        }
-    }
-
-    return Response;
+    auto clients = snapshotClients(clientId);
+    if (clients.empty())
+        return false;
+    auto copy = std::make_shared<JsonDocument>(document);
+    if (copy->overflowed())
+        return false;
+    return dispatch([clients, copy]() {
+        for (const auto& client : clients)
+            client->SendJsonDocToWebSocket(*copy);
+    });
 }
 
-void ESPUIClass::jsonDom(uint16_t, AsyncWebSocketClient*, bool)
+bool ESPUIClass::dispatch(std::function<void()> work)
+{
+    if (!server || !server->isRunning())
+        return false;
+    if (serverTask.load() == xTaskGetCurrentTaskHandle())
+    {
+        work();
+        return true;
+    }
+    // Bound application work as well as Psychic's per-client send queue.
+    if (pendingWork.fetch_add(1) >= 32)
+    {
+        pendingWork.fetch_sub(1);
+        return false;
+    }
+    struct Work { ESPUIClass* owner; std::function<void()> run; };
+    auto* item = new (std::nothrow) Work{this, std::move(work)};
+    if (!item)
+    {
+        pendingWork.fetch_sub(1);
+        return false;
+    }
+    const esp_err_t err = httpd_queue_work(server->server, [](void* arg) {
+        std::unique_ptr<Work> item(static_cast<Work*>(arg));
+        item->owner->serverTask.store(xTaskGetCurrentTaskHandle());
+        item->run();
+        item->owner->pendingWork.fetch_sub(1);
+    }, item);
+    if (err != ESP_OK)
+    {
+        delete item;
+        pendingWork.fetch_sub(1);
+        Serial.printf("ESPUI: queue work failed (%s)\n", esp_err_to_name(err));
+        return false;
+    }
+    return true;
+}
+
+void ESPUIClass::jsonDom(uint16_t, int, bool)
 {
     NotifyClients(ClientUpdateType_t::RebuildNeeded);
 }
@@ -1179,10 +1249,28 @@ void ESPUIClass::jsonDom(uint16_t, AsyncWebSocketClient*, bool)
 // Tell all of the clients that they need to ask for an upload of the control data.
 void ESPUIClass::NotifyClients(ClientUpdateType_t newState)
 {
-    for (auto& CurrentClient : MapOfClients)
-    {
-        CurrentClient.second->NotifyClient(newState);
-    }
+    auto clients = snapshotClients();
+    if (clients.empty())
+        return;
+    for (const auto& client : clients)
+        client->MarkPending();
+    if (!dispatch([clients, newState]() {
+        for (const auto& client : clients)
+            client->NotifyClient(newState);
+    }))
+        Serial.println(F("ESPUI: client notification queue unavailable"));
+}
+
+void ESPUIClass::NotifyClient(uint32_t WsClientId, ClientUpdateType_t newState)
+{
+    auto clients = snapshotClients(static_cast<int>(WsClientId));
+    for (const auto& client : clients)
+        client->MarkPending();
+    if (!dispatch([clients, newState]() {
+        for (const auto& client : clients)
+            client->NotifyClient(newState);
+    }))
+        Serial.println(F("ESPUI: client notification queue unavailable"));
 }
 
 // Tell all of the clients that they need to ask for an upload of the control data.
@@ -1190,9 +1278,9 @@ bool ESPUIClass::isSynchronized()
 {
     bool result = true;
 
-    for (auto& CurrentClient : MapOfClients)
+    for (const auto& client : snapshotClients())
     {
-        result = result && CurrentClient.second->IsSyncronized();
+        result = result && client->IsSyncronized();
     }
     return result;
 }
@@ -1200,11 +1288,7 @@ bool ESPUIClass::isSynchronized()
 
 void ESPUIClass::jsonReload()
 {
-    for (auto& CurrentClient : MapOfClients)
-    {
-        // Serial.println("Requesting Reload");
-        CurrentClient.second->NotifyClient(ClientUpdateType_t::ReloadNeeded);
-    }
+    NotifyClients(ClientUpdateType_t::ReloadNeeded);
 }
 
 void ESPUIClass::beginSPIFFS(const char* _title, const char* username, const char* password, uint16_t port)
@@ -1215,309 +1299,135 @@ void ESPUIClass::beginSPIFFS(const char* _title, const char* username, const cha
 
 void ESPUIClass::beginLITTLEFS(const char* _title, const char* username, const char* password, uint16_t port)
 {
-    ui_title = _title;
-    basicAuthUsername = username;
-    basicAuthPassword = password;
-
-    if (username == nullptr && password == nullptr)
-    {
-        basicAuth = false;
-    }
-    else
-    {
-        basicAuth = true;
-    }
-
-    server = new AsyncWebServer(port);
-    ws = new AsyncWebSocket("/ws");
-
-    bool fsBegin = EspuiLittleFS.begin();
-    if (!fsBegin)
-    {
-#if defined(DEBUG_ESPUI)
-        if (verbosity)
-        {
-            Serial.println(F("LITTLEFS Mount Failed, PLEASE CHECK THE README ON HOW TO "
-                             "PREPARE YOUR ESP!!!!!!!"));
-        }
-#endif
-
-        return;
-    }
-
-#if defined(DEBUG_ESPUI)
-    if (verbosity)
-    {
-        listDir("/", 1);
-    }
-#endif
-
-    bool indexExists = EspuiLittleFS.exists("/index.htm");
-    if (!indexExists)
-    {
-#if defined(DEBUG_ESPUI)
-        if (verbosity)
-        {
-            Serial.println(F("Please read the README!!!!!!!, Make sure to "
-                             "prepareFileSystem() once in an empty sketch"));
-        }
-#endif
-
-        return;
-    }
-
-    ws->onEvent([](AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data,
-                    size_t len) { ESPUI.onWsEvent(server, client, type, arg, data, len); });
-    server->addHandler(ws);
-
-    if (basicAuth)
-    {
-        if (WS_AUTHENTICATION)
-        {
-            ws->setAuthentication(basicAuthUsername, basicAuthPassword);
-        }
-        server->serveStatic("/", EspuiLittleFS, "/").setDefaultFile("index.htm").setAuthentication(username, password);
-    }
-    else
-    {
-        server->serveStatic("/", EspuiLittleFS, "/").setDefaultFile("index.htm");
-    }
-
-    // Heap for general Servertest
-    server->on("/heap", HTTP_GET, [](AsyncWebServerRequest* request) {
-        if (ESPUI.basicAuth && !request->authenticate(ESPUI.basicAuthUsername, ESPUI.basicAuthPassword))
-        {
-            return request->requestAuthentication();
-        }
-
-        request->send(200, "text/plain", heapInfo(F("In LITTLEFS mode")));
-    });
-
-    server->onNotFound([this](AsyncWebServerRequest* request) {
-        if (captivePortal)
-        {
-            request->redirect("/");
-        }
-        else
-        {
-            request->send(404);
-        }
-    });
-
-
-   server->on("/js/custom.js", HTTP_GET, [](AsyncWebServerRequest* request) {
-        if (ESPUI.basicAuth && !request->authenticate(ESPUI.basicAuthUsername, ESPUI.basicAuthPassword))
-        {
-            return request->requestAuthentication();
-        }
-
-        request->send(200, "application/javascript", customJS ? customJS : "");
-	//log_i("%s", customJS);
-    });
-
-    server->on("/css/custom.css", HTTP_GET, [](AsyncWebServerRequest* request) {
-        if (ESPUI.basicAuth && !request->authenticate(ESPUI.basicAuthUsername, ESPUI.basicAuthPassword))
-        {
-            return request->requestAuthentication();
-        }
-
-        request->send(200, "text/css", customCSS ? customCSS : "");
-    });
-
-
-    server->begin();
-
-#if defined(DEBUG_ESPUI)
-    if (verbosity)
-    {
-        Serial.println(F("UI Initialized"));
-    }
-#endif
+    beginServer(_title, username, password, port, true);
 }
 
 void ESPUIClass::begin(const char* _title, const char* username, const char* password, uint16_t port)
 {
-    basicAuthUsername = username;
-    basicAuthPassword = password;
+    beginServer(_title, username, password, port, false);
+}
 
-    if (username != nullptr && password != nullptr)
+bool ESPUIClass::authenticateRequest(PsychicRequest* request)
+{
+    return !basicAuth || request->authenticate(basicAuthUsername, basicAuthPassword);
+}
+
+void ESPUIClass::beginServer(const char* title, const char* username, const char* password,
+    uint16_t port, bool useLittleFS)
+{
+    // First configuration wins. Never duplicate routes/handlers or replace a
+    // live server. A failed start (e.g. no IP yet) can be retried safely.
+    if (server)
     {
-        basicAuth = true;
+        const esp_err_t err = server->start();
+        if (err != ESP_OK)
+            Serial.printf("ESPUI: HTTP start failed (%s)\n", esp_err_to_name(err));
+        return;
+    }
+
+    // Do not silently disable authentication for an incomplete credential pair.
+    if ((username == nullptr) != (password == nullptr))
+    {
+        Serial.println(F("ESPUI: supply both username and password, or neither"));
+        return;
+    }
+    if (useLittleFS)
+    {
+        if (!EspuiLittleFS.begin())
+        {
+            Serial.println(F("ESPUI: LittleFS mount failed"));
+            return;
+        }
+        if (!EspuiLittleFS.exists("/index.htm") && !EspuiLittleFS.exists("/index.htm.gz"))
+        {
+            Serial.println(F("ESPUI: LittleFS index missing; run prepareFileSystem() first"));
+            return;
+        }
+    }
+
+    ui_title = title ? title : "ESPUI";
+    basicAuth = username != nullptr;
+    authUsername = username ? username : "";
+    authPassword = password ? password : "";
+    basicAuthUsername = authUsername.c_str();
+    basicAuthPassword = authPassword.c_str();
+
+    server = new PsychicHttpServer(port);
+    ws = new PsychicWebSocketHandler();
+
+    // HTTP meta-endpoints (including static files) pass through this chain.
+    server->addMiddleware([this](PsychicRequest* request, PsychicResponse*, PsychicMiddlewareNext next) -> esp_err_t {
+        if (!authenticateRequest(request))
+            return request->requestAuthentication(BASIC_AUTH, "ESPUI", "Authentication required");
+        return next();
+    });
+
+    // Native WebSocket endpoints bypass the server-wide chain. Authenticate
+    // the upgrade explicitly, BEFORE Psychic registers the connected client.
+    // Established frames have no HTTP Authorization header and need no recheck.
+    ws->addMiddleware([this](PsychicRequest* request, PsychicResponse*, PsychicMiddlewareNext next) -> esp_err_t {
+        if (request->method() == HTTP_GET && !authenticateRequest(request))
+            return request->requestAuthentication(BASIC_AUTH, "ESPUI", "Authentication required");
+        return next();
+    });
+    ws->onOpen([this](PsychicWebSocketClient* client) { onWsOpen(client); });
+    ws->onFrame([this](PsychicWebSocketRequest* request, httpd_ws_frame* frame) -> esp_err_t {
+        return onWsFrame(request, frame);
+    });
+    ws->onClose([this](PsychicWebSocketClient* client) { onWsClose(client); });
+    server->on("/ws", HTTP_GET, ws);
+
+    // Register explicit custom assets before the catch-all filesystem handler,
+    // so filesystem copies cannot shadow setCustomJS()/setCustomCSS().
+    server->on("/js/custom.js", HTTP_GET, [](PsychicRequest*, PsychicResponse* response) -> esp_err_t {
+        return response->send(200, "application/javascript", customJS ? customJS : "");
+    });
+    server->on("/css/custom.css", HTTP_GET, [](PsychicRequest*, PsychicResponse* response) -> esp_err_t {
+        return response->send(200, "text/css", customCSS ? customCSS : "");
+    });
+    server->on("/heap", HTTP_GET, [useLittleFS](PsychicRequest*, PsychicResponse* response) -> esp_err_t {
+        const String info = heapInfo(useLittleFS ? F("In LITTLEFS mode") : F("In Memorymode"));
+        return response->send(200, "text/plain", info.c_str());
+    });
+
+    if (useLittleFS)
+    {
+        server->serveStatic("/", EspuiLittleFS, "/")->setDefaultFile("index.htm");
     }
     else
     {
-        basicAuth = false;
+        server->on("/", HTTP_GET, [](PsychicRequest*, PsychicResponse* response) -> esp_err_t {
+            return response->send(200, "text/html", HTML_INDEX);
+        });
+        auto gzipRoute = [this](const char* path, const char* contentType, const uint8_t* data, size_t size) {
+            server->on(path, HTTP_GET, [contentType, data, size](PsychicRequest*, PsychicResponse* response) -> esp_err_t {
+                response->addHeader("Content-Encoding", "gzip");
+                return response->send(200, contentType, data, size);
+            });
+        };
+        gzipRoute("/js/zepto.min.js", "application/javascript", JS_ZEPTO_GZIP, sizeof(JS_ZEPTO_GZIP));
+        gzipRoute("/js/controls.js", "application/javascript", JS_CONTROLS_GZIP, sizeof(JS_CONTROLS_GZIP));
+        gzipRoute("/js/slider.js", "application/javascript", JS_SLIDER_GZIP, sizeof(JS_SLIDER_GZIP));
+        gzipRoute("/js/graph.js", "application/javascript", JS_GRAPH_GZIP, sizeof(JS_GRAPH_GZIP));
+        gzipRoute("/js/tabbedcontent.js", "application/javascript", JS_TABBEDCONTENT_GZIP, sizeof(JS_TABBEDCONTENT_GZIP));
+        gzipRoute("/css/style.css", "text/css", CSS_STYLE_GZIP, sizeof(CSS_STYLE_GZIP));
+        gzipRoute("/css/normalize.css", "text/css", CSS_NORMALIZE_GZIP, sizeof(CSS_NORMALIZE_GZIP));
     }
 
-    ui_title = _title;
-
-    server = new AsyncWebServer(port);
-    ws = new AsyncWebSocket("/ws");
-
-    ws->onEvent([](AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data,
-                    size_t len) { ESPUI.onWsEvent(server, client, type, arg, data, len); });
-
-    server->addHandler(ws);
-
-    if (basicAuth && WS_AUTHENTICATION)
-        ws->setAuthentication(username, password);
-
-    server->on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
-        if (ESPUI.basicAuth && !request->authenticate(ESPUI.basicAuthUsername, ESPUI.basicAuthPassword))
-        {
-            return request->requestAuthentication();
-        }
-
-        AsyncWebServerResponse* response = request->beginResponse(200, "text/html", HTML_INDEX);
-        request->send(response);
+    server->onNotFound([this](PsychicRequest* request, PsychicResponse* response) -> esp_err_t {
+        // Native 404 dispatch can also bypass server middleware.
+        if (!authenticateRequest(request))
+            return request->requestAuthentication(BASIC_AUTH, "ESPUI", "Authentication required");
+        // Exactly one response, with no callback delay/yield.
+        return captivePortal ? response->redirect("/") : response->send(404);
     });
 
-    // Javascript files
-
-    server->on("/js/zepto.min.js", HTTP_GET, [](AsyncWebServerRequest* request) {
-        if (ESPUI.basicAuth && !request->authenticate(ESPUI.basicAuthUsername, ESPUI.basicAuthPassword))
-        {
-            return request->requestAuthentication();
-        }
-
-        AsyncWebServerResponse* response
-            = request->beginResponse(200, "application/javascript", JS_ZEPTO_GZIP, sizeof(JS_ZEPTO_GZIP));
-        response->addHeader("Content-Encoding", "gzip");
-        request->send(response);
-    });
-
-    server->on("/js/controls.js", HTTP_GET, [](AsyncWebServerRequest* request) {
-        if (ESPUI.basicAuth && !request->authenticate(ESPUI.basicAuthUsername, ESPUI.basicAuthPassword))
-        {
-            return request->requestAuthentication();
-        }
-
-        AsyncWebServerResponse* response
-            = request->beginResponse(200, "application/javascript", JS_CONTROLS_GZIP, sizeof(JS_CONTROLS_GZIP));
-        response->addHeader("Content-Encoding", "gzip");
-        request->send(response);
-    });
-
-    server->on("/js/slider.js", HTTP_GET, [](AsyncWebServerRequest* request) {
-        if (ESPUI.basicAuth && !request->authenticate(ESPUI.basicAuthUsername, ESPUI.basicAuthPassword))
-        {
-            return request->requestAuthentication();
-        }
-
-        AsyncWebServerResponse* response
-            = request->beginResponse(200, "application/javascript", JS_SLIDER_GZIP, sizeof(JS_SLIDER_GZIP));
-        response->addHeader("Content-Encoding", "gzip");
-        request->send(response);
-    });
-
-    server->on("/js/graph.js", HTTP_GET, [](AsyncWebServerRequest* request) {
-        if (ESPUI.basicAuth && !request->authenticate(ESPUI.basicAuthUsername, ESPUI.basicAuthPassword))
-        {
-            return request->requestAuthentication();
-        }
-
-        AsyncWebServerResponse* response
-            = request->beginResponse(200, "application/javascript", JS_GRAPH_GZIP, sizeof(JS_GRAPH_GZIP));
-        response->addHeader("Content-Encoding", "gzip");
-        request->send(response);
-    });
-
-    server->on("/js/tabbedcontent.js", HTTP_GET, [](AsyncWebServerRequest* request) {
-        if (ESPUI.basicAuth && !request->authenticate(ESPUI.basicAuthUsername, ESPUI.basicAuthPassword))
-        {
-            return request->requestAuthentication();
-        }
-
-        AsyncWebServerResponse* response = request->beginResponse(
-            200, "application/javascript", JS_TABBEDCONTENT_GZIP, sizeof(JS_TABBEDCONTENT_GZIP));
-        response->addHeader("Content-Encoding", "gzip");
-        request->send(response);
-    });
-
-    // Stylesheets
-
-    server->on("/css/style.css", HTTP_GET, [](AsyncWebServerRequest* request) {
-        if (ESPUI.basicAuth && !request->authenticate(ESPUI.basicAuthUsername, ESPUI.basicAuthPassword))
-        {
-            return request->requestAuthentication();
-        }
-
-        AsyncWebServerResponse* response
-            = request->beginResponse(200, "text/css", CSS_STYLE_GZIP, sizeof(CSS_STYLE_GZIP));
-        response->addHeader("Content-Encoding", "gzip");
-        request->send(response);
-    });
-
-    server->on("/css/normalize.css", HTTP_GET, [](AsyncWebServerRequest* request) {
-        if (ESPUI.basicAuth && !request->authenticate(ESPUI.basicAuthUsername, ESPUI.basicAuthPassword))
-        {
-            return request->requestAuthentication();
-        }
-
-        AsyncWebServerResponse* response
-            = request->beginResponse(200, "text/css", CSS_NORMALIZE_GZIP, sizeof(CSS_NORMALIZE_GZIP));
-        response->addHeader("Content-Encoding", "gzip");
-        request->send(response);
-    });
-
-    // Heap for general Servertest
-    server->on("/heap", HTTP_GET, [](AsyncWebServerRequest* request) {
-        if (ESPUI.basicAuth && !request->authenticate(ESPUI.basicAuthUsername, ESPUI.basicAuthPassword))
-        {
-            return request->requestAuthentication();
-        }
-
-        request->send(200, "text/plain", heapInfo(F("In Memorymode")));
-    });
-
-    server->on("/js/custom.js", HTTP_GET, [](AsyncWebServerRequest* request) {
-        if (ESPUI.basicAuth && !request->authenticate(ESPUI.basicAuthUsername, ESPUI.basicAuthPassword))
-        {
-            return request->requestAuthentication();
-        }
-
-        request->send(200, "application/javascript", customJS ? customJS : "");
-	//if (customJS)
-	 //log_i("%s", customJS);
-	//else log_i("empty customJS");
-    });
-
-    server->on("/css/custom.css", HTTP_GET, [](AsyncWebServerRequest* request) {
-        if (ESPUI.basicAuth && !request->authenticate(ESPUI.basicAuthUsername, ESPUI.basicAuthPassword))
-        {
-            return request->requestAuthentication();
-        }
-
-        request->send(200, "text/css", customCSS ? customCSS : "");
-    });
-
-    server->onNotFound([this](AsyncWebServerRequest* request) {
-        if (captivePortal)
-        {
-            AsyncResponseStream *response = request->beginResponseStream("text/html");
-            String responseText;
-            responseText.reserve(1024);
-            responseText += F("<!DOCTYPE html><html><head><title>Captive Portal</title></head><body>");
-            responseText += ("<p>If site does not re-direct click here <a href='http://" +  WiFi.softAPIP().toString() + "'>this link</a></p>");
-            responseText += ("</body></html><head><meta http-equiv=\"Refresh\" content=\"0; URL='http://" +  WiFi.softAPIP().toString() + "'\" /></head>");
-            response->write(responseText.c_str(), responseText.length());
-            request->send(response);
-            request->redirect("/");
-        }
-        else
-        {
-            request->send(404);
-        }
-        yield();
-    });
-
-    server->begin();
-
+    const esp_err_t err = server->start();
+    if (err != ESP_OK)
+        Serial.printf("ESPUI: HTTP start failed (%s)\n", esp_err_to_name(err));
 #if defined(DEBUG_ESPUI)
-    if (verbosity)
-    {
-        Serial.println(F("UI Initialized"));
-    }
+    else if (verbosity)
+        Serial.println(F("UI Initialized (PsychicHttp)"));
 #endif
 }
 

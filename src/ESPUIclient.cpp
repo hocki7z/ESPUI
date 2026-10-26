@@ -2,7 +2,6 @@
 #include "ESPUIclient.h"
 #include "ESPUIcontrol.h"
 
-static size_t max_buffer_len = 0;
 // JSONSlave:
 // helper to process exact JSON serialization size
 // it takes ~2ms on esp8266 and avoid large String reallocation which is really worth the cost
@@ -39,19 +38,8 @@ protected:
     size_t counter = 0;
 };
 
-ESPUIclient::ESPUIclient(AsyncWebSocketClient * _client):
-    client(_client)
-{
-    fsm_EspuiClient_state_Idle_imp.SetParent(this);
-    fsm_EspuiClient_state_SendingUpdate_imp.SetParent(this);
-    fsm_EspuiClient_state_Rebuilding_imp.SetParent(this);
-    fsm_EspuiClient_state_Reloading_imp.SetParent(this);
-
-    fsm_EspuiClient_state_Idle_imp.Init();
-}
-
-ESPUIclient::ESPUIclient(const ESPUIclient& source):
-    client(source.client)
+ESPUIclient::ESPUIclient(int socket):
+    socket(socket)
 {
     fsm_EspuiClient_state_Idle_imp.SetParent(this);
     fsm_EspuiClient_state_SendingUpdate_imp.SetParent(this);
@@ -67,12 +55,8 @@ ESPUIclient::~ESPUIclient()
 
 bool ESPUIclient::CanSend()
 {
-    bool Response = false;
-    if (nullptr != client)
-    {
-        Response = client->canSend();
-    }
-    return Response;
+    // Only called on the HTTP server task; never retain Psychic client pointers.
+    return connected.load() && ESPUI.WebSocket() && ESPUI.WebSocket()->getClient(socket);
 }
 
 void ESPUIclient::FillInHeader(JsonDocument& document)
@@ -89,8 +73,7 @@ void ESPUIclient::FillInHeader(JsonDocument& document)
 
 bool ESPUIclient::IsSyncronized()
 {
-    return ((ClientUpdateType_t::Synchronized == ClientUpdateType) &&
-            (&fsm_EspuiClient_state_Idle_imp == pCurrentFsmState));
+    return synchronized.load();
 }
 
 bool ESPUIclient::SendClientNotification(ClientUpdateType_t value)
@@ -123,47 +106,30 @@ bool ESPUIclient::SendClientNotification(ClientUpdateType_t value)
 
 void ESPUIclient::NotifyClient(ClientUpdateType_t newState)
 {
+    if (!connected.load())
+        return;
+    synchronized.store(false);
     SetState(newState);
     pCurrentFsmState->NotifyClient();
+    synchronized.store(ClientUpdateType_t::Synchronized == ClientUpdateType &&
+        &fsm_EspuiClient_state_Idle_imp == pCurrentFsmState);
 }
 
 // Handle Websockets Communication
-bool ESPUIclient::onWsEvent(AwsEventType type, void* arg, uint8_t* data, size_t len)
+bool ESPUIclient::onWsEvent(ESPUIWebSocketEvent type, const uint8_t* data, size_t len)
 {
     bool Response = false;
     // Serial.println(String("ESPUIclient::OnWsEvent: type: ") + String(type));
 
     switch (type)
     {
-        case WS_EVT_PONG:
-        {
-            #if defined(DEBUG_ESPUI)
-            if (ESPUI.verbosity)
-            {
-                Serial.println(F("ESPUIclient::OnWsEvent:WS_EVT_PONG"));
-            }
-            #endif
-            break;
-        }
-
-        case WS_EVT_ERROR:
-        {
-            #if defined(DEBUG_ESPUI)
-            if (ESPUI.verbosity)
-            {
-                Serial.println(F("ESPUIclient::OnWsEvent:WS_EVT_ERROR"));
-            }
-            #endif
-            break;
-        }
-
-        case WS_EVT_CONNECT:
+        case ESPUIWebSocketEvent::Connected:
         {
     		#if defined(DEBUG_ESPUI)
             if (ESPUI.verbosity)
             {
                 Serial.println(F("ESPUIclient::OnWsEvent:WS_EVT_CONNECT"));
-                Serial.println(client->id());
+                Serial.println(socket);
             }
     		#endif
 
@@ -172,17 +138,23 @@ bool ESPUIclient::onWsEvent(AwsEventType type, void* arg, uint8_t* data, size_t 
             break;
         }
 
-        case WS_EVT_DATA:
+        case ESPUIWebSocketEvent::Data:
         {
             //Serial.println(F("ESPUIclient::OnWsEvent:WS_EVT_DATA"));
             String msg = "";
-            msg.reserve(len + 1);
+            if (!msg.reserve(len + 1))
+            {
+                httpd_sess_trigger_close(ESPUI.WebServer()->server, socket);
+                break;
+            }
 
             for (size_t i = 0; i < len; i++)
             {
                 msg += (char)data[i];
             }
 
+            if (msg.indexOf(':') < 1)
+                break;
             String   cmd   = msg.substring(0, msg.indexOf(":"));
             String   value = msg.substring(cmd.length() + 1, msg.lastIndexOf(':'));
             uint16_t id    = msg.substring(msg.lastIndexOf(':') + 1).toInt();
@@ -251,6 +223,8 @@ bool ESPUIclient::onWsEvent(AwsEventType type, void* arg, uint8_t* data, size_t 
         }
     } // end switch
 
+    synchronized.store(ClientUpdateType_t::Synchronized == ClientUpdateType &&
+        &fsm_EspuiClient_state_Idle_imp == pCurrentFsmState);
     return Response;
 }
 
@@ -343,63 +317,25 @@ bool ESPUIclient::SendControlsToClient(uint16_t startidx, ClientUpdateType_t Tra
 
 bool ESPUIclient::SendJsonDocToWebSocket(JsonDocument& document)
 {
-    bool Response = true;
-
-    do // once
+    if (!CanSend())
+        return false;
+    String json;
+    const size_t length = measureJson(document);
+    if (!json.reserve(length + 1) || serializeJson(document, json) != length)
     {
-        if (!CanSend())
-        {
-            #if defined(DEBUG_ESPUI)
-                if (ESPUI.verbosity >= Verbosity::VerboseJSON)
-                {
-                    Serial.println(F("ESPUIclient::SendJsonDocToWebSocket: Cannot Send to client. Not sending websocket message"));
-                }
-            #endif
-            // Serial.println("ESPUIclient::SendJsonDocToWebSocket: Cannot Send to client. Not sending websocket message");
-            Response = false;
-            break;
-        }
-
-        //String json = JSONSlave::toString(document);
-
-        /*#if defined(DEBUG_ESPUI)
-            if (ESPUI.verbosity >= Verbosity::VerboseJSON)
-            {
-                Serial.println(String(F("ESPUIclient::SendJsonDocToWebSocket: json: '")) + json + "'");
-            }
-        #endif
-
-        #if defined(DEBUG_ESPUI)
-            if (ESPUI.verbosity >= Verbosity::VerboseJSON)
-            {
-                Serial.println(F("ESPUIclient::SendJsonDocToWebSocket: client.text"));
-            }
-        #endif*/
-        // Serial.println(F("ESPUIclient::SendJsonDocToWebSocket: client.text"));
-	//Serial.printf("json length %u\n\r",json.length());
-	//Serial.printf("json _cstr length %u\n\r", strlen(json.c_str()));
-	//Serial.printf("last char %u\n\r", *(json.c_str() + strlen(json.c_str())));
-	//Serial.println(json);
-        //delay(500);
-	//client->text(json);
-	/*std::string json {};
-	serializeJson(document, json);
-	Serial.printf("\n\r*********JSON length %u\n\r",json.length());
-	//Serial.printf("\n\r*********JSON length %u\n\r",strlen(json));
-
-	client->text(json.c_str());*/
-	const size_t len = measureJson(document);
-        if (len > max_buffer_len)
-	 max_buffer_len = len;
-        log_i("max_buffer_len %lu", max_buffer_len);
-  	// original API from me-no-dev
-  	AsyncWebSocketMessageBuffer* buffer = ESPUI.WebSocket()->makeBuffer(len);
-  	//assert(buffer); // up to you to keep or remove this
-  	serializeJson(document, buffer->get(), len);
-  	client->text(buffer);
-    } while (false);
-
-    return Response;
+        httpd_sess_trigger_close(ESPUI.WebServer()->server, socket);
+        return false;
+    }
+    auto* client = ESPUI.WebSocket()->getClient(socket);
+    const esp_err_t err = client->sendMessage(HTTPD_WS_TYPE_TEXT, json.c_str(), json.length());
+    if (err != ESP_OK)
+    {
+        // Do not leave the acknowledgement FSM waiting forever for a dropped
+        // message. Close the connection; browser reconnect rebuilds the UI.
+        httpd_sess_trigger_close(ESPUI.WebServer()->server, socket);
+        return false;
+    }
+    return true;
 }
 
 void ESPUIclient::SetState(ClientUpdateType_t value)

@@ -1,5 +1,40 @@
 # ESPUI
 
+## Local PsychicHttp backend (ESP32 only)
+
+This local variant replaces ESPAsyncWebServer/AsyncTCP with PsychicHttp 3.1.2
+and ArduinoJson 7.4.3. The older ESP8266 and Async-specific instructions below
+describe the upstream implementation and do not apply to this backend.
+
+- Existing control APIs, embedded gzip assets, custom JS/CSS, LittleFS serving,
+  and the browser's acknowledgement/fragmented-control protocol are retained.
+- `begin()` and `beginLITTLEFS()` use HTTP on port 80 by default. Supplying both
+  username and password protects HTTP routes and WebSocket upgrades with Basic
+  authentication. Plain HTTP does not encrypt those credentials.
+- Repeated startup is safe; the first title, mode, credentials and port remain
+  configured. A failed server start can be retried by calling `begin()` again.
+- `WebServer()` now returns `PsychicHttpServer*`; `WebSocket()` returns
+  `PsychicWebSocketHandler*`. Async callback/type APIs are no longer available.
+  `jsonDom()` accepts an integer socket instead of an Async client pointer.
+- Client IDs are socket descriptors. Do not retain Psychic client pointers;
+  they are destroyed on disconnect. ESPUI marshals its client updates to the
+  HTTP server task. External code using the raw server/socket accessors must
+  provide equivalent lifetime and task-safety guarantees.
+- Outbound allocation/queue errors close the affected connection so the browser
+  can reconnect and rebuild instead of waiting indefinitely for a missing ACK.
+- WebSocket commands must be complete text messages. ESPUI's application-level
+  fragmented-control transfer remains supported; fragmented WebSocket input is
+  not supported by this adapter.
+- HTTPS is not enabled by this migration. It requires a certificate/private key,
+  framework HTTPS/WebSocket support, and memory/concurrency testing on hardware.
+  Keep captive-portal discovery on HTTP.
+
+Validation checklist: compile the consuming application, then test initial load,
+all controls, large label/control transfers, two tabs, disconnect/reconnect,
+slow clients, Basic authentication, custom assets, LittleFS, and AP provisioning.
+The current WordClock Arduino-ESP32 2.0.17 toolchain still needs a fresh build
+to verify compatibility with PsychicHttp 3.1.2's ESP-IDF API usage.
+
 ![ESPUI](docs/ui_complete.png)
 
 ESPUI is a simple library to make a web-based user interface for your projects using
@@ -76,15 +111,11 @@ The Library runs on any kind of **ESP8266** and **ESP32** (NodeMCU, AI Thinker, 
 
 ## Dependencies
 
-This library is dependent on the following libraries.
+This local backend requires:
 
-- [ESPAsyncWebserver](https://github.com/me-no-dev/ESPAsyncWebServer)
-- [ArduinoJson](https://github.com/bblanchon/ArduinoJson) (Last tested with
-  version 6.10.0)
-
-- (_For ESP8266_) [ESPAsyncTCP](https://github.com/me-no-dev/ESPAsyncTCP)
-- (_For ESP32_) [AsyncTCP](https://github.com/me-no-dev/AsyncTCP)
-- (_For ESP32_) [lorol/LittleFS_esp32](https://github.com/lorol/LITTLEFS)
+- [PsychicHttp](https://github.com/hoeken/PsychicHttp), version 3.1.2
+- [ArduinoJson](https://github.com/bblanchon/ArduinoJson), version 7.4.3
+- ESP32 Arduino framework with built-in LittleFS and ESP-IDF WebSocket support
 
 ## How to Install
 
