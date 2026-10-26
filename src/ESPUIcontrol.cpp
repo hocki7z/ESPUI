@@ -696,6 +696,11 @@ bool LabelControl::MarshalControl(JsonObject & _item,
     item[F("color")]   = (int)color;
     item[F("enabled")] = control_flags & CONTROL_FLAG_ENABLED;
 
+    if (Type::Details == type)
+    {
+      item[F("expanded")] = detailsExpanded;
+    }
+
     if (panelStyle) {item[F("panelStyle")]    = panelStyle;}
     if (elementStyle)  {item[F("elementStyle")]  = elementStyle;}
 

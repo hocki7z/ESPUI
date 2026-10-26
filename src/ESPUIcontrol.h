@@ -27,6 +27,7 @@
 #define UI_TEXT_INPUT       Control::Type::Text
 #define UI_GRAPH            Control::Type::Graph
 #define UI_ADD_GRAPH_POINT  Control::Type::GraphPoint
+#define UI_DETAILS          Control::Type::Details
 
 #define UPDATE_LABEL        Control::Type::UpdateLabel
 #define UPDATE_SWITCHER     Control::Type::UpdateSwitcher
@@ -86,6 +87,7 @@ public:
         Time,
         FileDisplay,
         ColorPickr,     // #RRGGBB text input with an offline Pickr popup
+        Details,
 
         Fragment = 98,
         Password = 99,
@@ -173,6 +175,7 @@ public:
 
     const char *panelStyle = nullptr;
     const char *elementStyle = nullptr;
+    bool detailsExpanded = false;
 
     LabelControl(ControlId_t id,
             Type type,

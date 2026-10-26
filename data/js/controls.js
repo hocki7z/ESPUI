@@ -66,6 +66,9 @@ const UPDATE_TIME = 120;
 const UI_FILEDISPLAY = 21;
 const UPDATE_FILEDISPLAY = 121;
 
+const UI_DETAILS = 22;
+const UPDATE_DETAILS = 122;
+
 const UI_FRAGMENT = 98;
 
 const UP = 0;
@@ -377,6 +380,7 @@ function start() {
             case UI_SELECT:
             case UI_GAUGE:
             case UI_SEPARATOR:
+            case UI_DETAILS:
                 if (data.visible) addToHTML(data);
                 break;
 
@@ -666,11 +670,16 @@ function start() {
              * Update messages change the value/style of a component without adding new HTML
              */
             case UPDATE_LABEL:
+            case UPDATE_DETAILS:
                 if (data.value.startsWith("Z2S_GUI_CMD_")) {
                     if (typeof window.onGatewayCommand === "function") {
                         window.onGatewayCommand(data.value, data.id);
                       }
                       break; // Skip normal HTML rendering
+                }
+
+                if (data.type === UPDATE_DETAILS) {
+                    $("#id" + data.id).prop("open", !!data.expanded);
                 }
 
                 $("#l" + data.id).html(data.value);
@@ -1366,6 +1375,14 @@ var addToHTML = function (data) {
                     "</div>";
                 break;
 
+            case UI_DETAILS:
+                html = "<details id='id" + data.id + "' " + (data.expanded ? "open " : "") + panelStyle + " class='two columns " + panelwide + " card tcenter " +
+                    colorClass(data.color) + "'>" +
+                    "<summary class='details-summary'><h5>" + data.label + "</h5></summary><hr/>" +
+                    elementHTML(data) +
+                    "</details>";
+                break;
+
             case UI_SEPARATOR:
                 html = "<div id='id" + data.id + "' " + panelStyle + " class='sectionbreak columns'>" +
                     "<h5>" + data.label + "</h5><hr/></div>";
@@ -1390,6 +1407,7 @@ var elementHTML = function (data) {
     var inputType = data.hasOwnProperty('inputType') ? " type='" + data.inputType + "' " : "";
     switch (data.type) {
         case UI_LABEL:
+        case UI_DETAILS:
             return "<span id='l" + id + "' " + elementStyle +
                 " class='label label-wrap'>" + data.value + "</span>";
         case UI_FILEDISPLAY:
