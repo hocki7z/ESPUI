@@ -30,9 +30,6 @@ const UPDATE_NUMBER = 107;
 const UI_TEXT_INPUT = 8;
 const UPDATE_TEXT_INPUT = 108;
 
-const UI_COLOR_PICKR = 22;
-const UPDATE_COLOR_PICKR = 122;
-
 const UI_GRAPH = 9;
 const ADD_GRAPH_POINT = 10;
 const CLEAR_GRAPH = 109;
@@ -66,8 +63,11 @@ const UPDATE_TIME = 120;
 const UI_FILEDISPLAY = 21;
 const UPDATE_FILEDISPLAY = 121;
 
-const UI_DETAILS = 22;
-const UPDATE_DETAILS = 122;
+const UI_COLOR_PICKR = 22;
+const UPDATE_COLOR_PICKR = 122;
+
+const UI_DETAILS = 23;
+const UPDATE_DETAILS = 123;
 
 const UI_FRAGMENT = 98;
 

@@ -11,9 +11,9 @@
 
 
 #define BASIC_CONTROL_ID        0x01
-#define LABEL_CONTROL_ID	0x02
+#define LABEL_CONTROL_ID        0x02
 #define STANDARD_CONTROL_ID     0x03
-#define STRING_CONTROL_ID	0x04
+#define STRING_CONTROL_ID       0x04
 
 
 #define UI_TITLE            Control::Type::Title
@@ -86,8 +86,8 @@ public:
         Separator,
         Time,
         FileDisplay,
-        ColorPickr,     // #RRGGBB text input with an offline Pickr popup
-        Details,
+        ColorPickr,     // = 22,    #RRGGBB text input with an offline Pickr popup
+        Details,        // = 23,    HTML details disclosure element
 
         Fragment = 98,
         Password = 99,

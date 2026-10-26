@@ -22,24 +22,6 @@
 
 static const char* emptyCstring = "";
 
-// Serve Pickr from flash in both memory and LittleFS modes.
-void ESPUIClass::registerPickrRoutes()
-{
-    server->on("/js/pickr.min.js", HTTP_GET, [this](AsyncWebServerRequest* request) {
-        if (basicAuth && !request->authenticate(basicAuthUsername, basicAuthPassword))
-            return request->requestAuthentication();
-        auto* response = request->beginResponse(200, "application/javascript", JS_PICKR_GZIP, sizeof(JS_PICKR_GZIP));
-        response->addHeader("Content-Encoding", "gzip");
-        request->send(response);
-    });
-    server->on("/css/pickr.min.css", HTTP_GET, [this](AsyncWebServerRequest* request) {
-        if (basicAuth && !request->authenticate(basicAuthUsername, basicAuthPassword))
-            return request->requestAuthentication();
-        auto* response = request->beginResponse(200, "text/css", CSS_PICKR_GZIP, sizeof(CSS_PICKR_GZIP));
-        response->addHeader("Content-Encoding", "gzip");
-        request->send(response);
-    });
-}
 
 // Optional user-defined JavaScript to be included in the UI.
 // Served at /js/custom.js, which is automatically included in index.htm.
@@ -523,6 +505,25 @@ void ESPUIClass::onWsEvent(
     }
 
     return;
+}
+
+// Serve Pickr from flash in both memory and LittleFS modes.
+void ESPUIClass::registerPickrRoutes()
+{
+    server->on("/js/pickr.min.js", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        if (basicAuth && !request->authenticate(basicAuthUsername, basicAuthPassword))
+            return request->requestAuthentication();
+        auto* response = request->beginResponse(200, "application/javascript", JS_PICKR_GZIP, sizeof(JS_PICKR_GZIP));
+        response->addHeader("Content-Encoding", "gzip");
+        request->send(response);
+    });
+    server->on("/css/pickr.min.css", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        if (basicAuth && !request->authenticate(basicAuthUsername, basicAuthPassword))
+            return request->requestAuthentication();
+        auto* response = request->beginResponse(200, "text/css", CSS_PICKR_GZIP, sizeof(CSS_PICKR_GZIP));
+        response->addHeader("Content-Encoding", "gzip");
+        request->send(response);
+    });
 }
 
 Control::ControlId_t ESPUIClass::addControl(Control::Type type, const char* label)
