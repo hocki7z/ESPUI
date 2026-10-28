@@ -1105,6 +1105,73 @@ ul.navigation li.active a {
   -pie-background: linear-gradient(#888, #666);
 }
 
+ul.navigation-tabs li a.turquoise,
+ul.navigation-tabs li.active a.turquoise {
+  color: white;
+  background: #1abc9c;
+  border-bottom: #1abc9c 3px solid;
+}
+
+ul.navigation-tabs li a.emerald,
+ul.navigation-tabs li.active a.emerald {
+  color: white;
+  background: #2ecc71;
+  border-bottom: #2ecc71 3px solid;
+}
+
+ul.navigation-tabs li a.peterriver,
+ul.navigation-tabs li.active a.peterriver {
+  color: white;
+  background: #3498db;
+  border-bottom: #3498db 3px solid;
+}
+
+ul.navigation-tabs li a.wetasphalt,
+ul.navigation-tabs li.active a.wetasphalt {
+  color: white;
+  background: #34495e;
+  border-bottom: #34495e 3px solid;
+}
+
+ul.navigation-tabs li a.sunflower,
+ul.navigation-tabs li.active a.sunflower {
+  color: #333;
+  background: #f1c40f;
+  border-bottom: #f1c40f 3px solid;
+}
+
+ul.navigation-tabs li a.carrot,
+ul.navigation-tabs li.active a.carrot {
+  color: white;
+  background: #e67e22;
+  border-bottom: #e67e22 3px solid;
+}
+
+ul.navigation-tabs li a.alizarin,
+ul.navigation-tabs li.active a.alizarin {
+  color: white;
+  background: #e74c3c;
+  border-bottom: #e74c3c 3px solid;
+}
+
+ul.navigation-tabs li a.dark,
+ul.navigation-tabs li.active a.dark {
+  color: white;
+  background: #444857;
+  border-bottom: #444857 3px solid;
+}
+
+ul.navigation-tabs li:not(.active) a[class] {
+  opacity: 0.15;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.18);
+  transition: opacity 0.15s ease, box-shadow 0.15s ease;
+}
+
+ul.navigation-tabs li.active a[class] {
+  opacity: 1;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+}
+
 div.tabscontent>div {
   padding: 0 15px;
 }

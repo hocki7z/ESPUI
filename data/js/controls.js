@@ -126,6 +126,21 @@ function colorClass(colorId) {
     }
 }
 
+function updateTabsBorderColor(tabLink) {
+    var tabBorderColors = {
+        turquoise: "#1abc9c",
+        emerald: "#2ecc71",
+        peterriver: "#3498db",
+        wetasphalt: "#34495e",
+        sunflower: "#f1c40f",
+        carrot: "#e67e22",
+        alizarin: "#e74c3c",
+        dark: "#444857"
+    };
+    var tabClass = tabLink ? tabLink.className : "";
+    $("#tabsnav").css("border-bottom-color", tabBorderColors[tabClass] || "#666");
+}
+
 var websock;
 var websockConnected = false;
 var WebSocketTimer = null;
@@ -490,12 +505,14 @@ function start() {
                     if (typeof tabName !== "string" || tabName.length === 0) {
                         tabName = "tab" + ( $("#tabsnav li").length + 1 );
                     }
+                    var tabColorClass = Number(data.color) === C_NONE ? "" : colorClass(data.color);
+                    var tabColorAttribute = tabColorClass ? " class='" + tabColorClass + "'" : "";
                     $("#tabsnav").append(
-                        "<li><a onmouseup='tabclick(" + data.id + ")' href='#" + tabName + "'>" + data.value + "</a></li>"
+                        "<li><a" + tabColorAttribute + " onmouseup='tabclick(" + data.id + ");updateTabsBorderColor(this)' href='#" + tabName + "'>" + data.value + "</a></li>"
                     );
                     $("#tabscontent").append("<div id='" + tabName + "' data-control-id='" + data.id + "'></div>");
-
                     tabs = $(".tabscontent").tabbedContent({ loop: true }).data("api");
+                    updateTabsBorderColor($("#tabsnav li.active a")[0]);
                     // switch to tab...
                     $("a")
                         .filter(function () {
