@@ -11,7 +11,7 @@ BasicControl::BasicControl(ControlId_t id, Type type, const char* label,
     long value, Color color, bool visible, ControlId_t parentControl)
     : id(id),
       type(type),
-      label(label),
+      label(label ? label : ""),
       color(color),
       parentControl(parentControl)
 {

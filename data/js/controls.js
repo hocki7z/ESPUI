@@ -486,10 +486,14 @@ function start() {
 
             case UI_TAB:
                 if (data.visible) {
+                    var tabName = data.label;
+                    if (typeof tabName !== "string" || tabName.length === 0) {
+                        tabName = "tab" + ( $("#tabsnav li").length + 1 );
+                    }
                     $("#tabsnav").append(
-                        "<li><a onmouseup='tabclick(" + data.id + ")' href='#tab" + data.id + "'>" + data.value + "</a></li>"
+                        "<li><a onmouseup='tabclick(" + data.id + ")' href='#" + tabName + "'>" + data.value + "</a></li>"
                     );
-                    $("#tabscontent").append("<div id='tab" + data.id + "'></div>");
+                    $("#tabscontent").append("<div id='" + tabName + "' data-control-id='" + data.id + "'></div>");
 
                     tabs = $(".tabscontent").tabbedContent({ loop: true }).data("api");
                     // switch to tab...
@@ -1133,7 +1137,7 @@ function textchange(number) {
 }
 
 function tabclick(number) {
-    var val = $("#tab" + number).val();
+    var val = $("[data-control-id='" + number + "']").val();
     websock.send("tabvalue:" + val + ":" + number);
 }
 
@@ -1347,10 +1351,11 @@ var addToHTML = function (data) {
     panelStyle = data.hasOwnProperty('panelStyle') ? " style='" + data.panelStyle + "' " : "";
     panelwide = data.hasOwnProperty('wide') ? "wide" : "";
 
-    if (!data.hasOwnProperty('parentControl') || $("#tab" + data.parentControl).length > 0) {
+    var tabPanel = $("[data-control-id='" + data.parentControl + "']");
+    if (!data.hasOwnProperty('parentControl') || tabPanel.length > 0) {
         //We add the control with its own panel
         var parent = data.hasOwnProperty('parentControl') ?
-            $("#tab" + data.parentControl) :
+            tabPanel :
             $("#row");
 
         var html = "";
