@@ -1467,7 +1467,7 @@ void ESPUIClass::begin(const char* _title, const char* username, const char* pas
         request->send(200, "text/plain", heapInfo(F("In Memorymode")));
     });
 
-    server->on("/js/custom.js", HTTP_GET, [](AsyncWebServerRequest* request) {
+    /*server->on("/js/custom.js", HTTP_GET, [](AsyncWebServerRequest* request) {
         if (ESPUI.basicAuth && !request->authenticate(ESPUI.basicAuthUsername, ESPUI.basicAuthPassword))
         {
             return request->requestAuthentication();
@@ -1478,7 +1478,7 @@ void ESPUIClass::begin(const char* _title, const char* username, const char* pas
          200, "application/javascript",(const uint8_t*)customJS, strlen_P(customJS));
         response->addHeader("Cache-Control", "public, max-age=3600");
         request->send(response);
-    });
+    });*/
 
     server->on("/css/custom.css", HTTP_GET, [](AsyncWebServerRequest* request) {
         if (ESPUI.basicAuth && !request->authenticate(ESPUI.basicAuthUsername, ESPUI.basicAuthPassword))
