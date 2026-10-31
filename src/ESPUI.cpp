@@ -1473,10 +1473,11 @@ void ESPUIClass::begin(const char* _title, const char* username, const char* pas
             return request->requestAuthentication();
         }
 
-        request->send(200, "application/javascript", customJS ? customJS : "");
-	//if (customJS)
-	 //log_i("%s", customJS);
-	//else log_i("empty customJS");
+        log_i("serving custom JS");
+        AsyncWebServerResponse *response = request->beginResponse_P(
+         200, "application/javascript",(const uint8_t*)customJS, strlen_P(customJS));
+        response->addHeader("Cache-Control", "public, max-age=3600");
+        request->send(response);
     });
 
     server->on("/css/custom.css", HTTP_GET, [](AsyncWebServerRequest* request) {
