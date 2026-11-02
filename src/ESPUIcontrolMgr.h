@@ -11,6 +11,11 @@ public:
 
     typedef BasicControl ControlObject_t;
 
+#ifdef ESP32
+    SemaphoreHandle_t ControlsSemaphore = NULL;
+#endif // def ESP32
+
+
     _ESPUIcontrolMgr();
     ~_ESPUIcontrolMgr() {}
     _ESPUIcontrolMgr (_ESPUIcontrolMgr const&) = delete;
@@ -106,10 +111,6 @@ ControlObject_t(Control::ControlId_t id,
     ControlObject_t * getFirstOptionIdObjectNoLock(Control::ControlId_t selector, long value);
     ControlObject_t * getNextOptionIdObjectNoLock(Control::ControlId_t selector, long value, Control::ControlId_t prev_option_id);
 
-
-#ifdef ESP32
-    SemaphoreHandle_t ControlsSemaphore = NULL;
-#endif // def ESP32
 
 };
 

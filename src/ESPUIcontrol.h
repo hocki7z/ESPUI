@@ -48,7 +48,7 @@
 #define COLOR_NONE          Control::Color::None
 
 // multiplier for converting a typical controller label or value to a Json object
-    #define JsonMarshalingRatio 5
+    #define JsonMarshalingRatio 2
     // Marshaed Control overhead length
     #define JsonMarshaledOverhead 64
 
@@ -155,7 +155,7 @@ struct {
     virtual bool MarshalControl(ArduinoJson::JsonObject& item, bool refresh, uint32_t DataOffset, uint32_t MaxLength, uint32_t & EstimmatedUsedSpace);
     void MarshalErrorMessage(ArduinoJson::JsonObject& item);
     virtual void DeleteControl();
-    virtual void onWsEvent(String& cmd, String& data);
+    virtual void onWsEvent(const char* cmd, const char* data);
     inline bool ToBeDeleted() { return control_flags & CONTROL_FLAG_DELETED; }
     inline bool SkipSend() { return ((type == Type::Option) && (control_flags & CONTROL_FLAG_NUMERIC) && (numeric_value == -3));}
     inline bool NeedsSync(uint32_t lastControlChangeID) {return (!(control_flags & CONTROL_FLAG_DELETED)) && (lastControlChangeID < ControlChangeID);}
@@ -267,7 +267,7 @@ public:
     bool HasCallback() override { return (nullptr != callback); }
     //bool MarshalControl(ArduinoJson::JsonObject& item, bool refresh, uint32_t DataOffset, uint32_t MaxLength, uint32_t & EstimmatedUsedSpace) override;
     void DeleteControl() override;
-    void onWsEvent(String& cmd, String& data) override;
+    void onWsEvent(const char* cmd, const char* data) override;
     //long getValueInt() override;
     //const char *getValueCstr() override;
     //const String &getValue() override;

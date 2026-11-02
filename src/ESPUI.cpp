@@ -861,24 +861,39 @@ void ESPUIClass::updateControl(BasicControl::ControlId_t id, int clientId)
     updateControl(control, clientId);
 }
 
+
 void ESPUIClass::updateControlValue(BasicControl* basic_control, const String& value, int clientId)
 {
     if (!basic_control)
     {
         return;
     }
-     
+
+#ifdef ESP32
+    xSemaphoreTake(ESPUIcontrolMgr.ControlsSemaphore, portMAX_DELAY);
+#endif
     if (basic_control->control_flags & CONTROL_FLAG_NUMERIC)
-     basic_control->numeric_value = value.toInt();
-    else {
-
-      if (basic_control->getClassId() != BASIC_CONTROL_ID) {
-
-        //Control *control = static_cast<Control *>(basic_control);
-        basic_control->control_flags &= ~CONTROL_FLAG_PCHAR;
-        (*basic_control->string_value) = value;
-       }
+    {
+        basic_control->numeric_value = value.toInt();
     }
+    else if (basic_control->getClassId() != BASIC_CONTROL_ID)
+    {
+        if ((basic_control->control_flags & CONTROL_FLAG_PCHAR) || 
+            !(basic_control->control_flags & CONTROL_FLAG_STRING) || 
+              !basic_control->string_value)
+        {
+            basic_control->control_flags &= ~CONTROL_FLAG_PCHAR;
+            basic_control->control_flags |= CONTROL_FLAG_STRING;
+            basic_control->string_value = new String(value);
+        }
+        else
+        {
+            *(basic_control->string_value) = value;
+        }
+    }
+#ifdef ESP32
+    xSemaphoreGive(ESPUIcontrolMgr.ControlsSemaphore);
+#endif
     updateControl(basic_control, clientId);
 }
 
@@ -905,17 +920,27 @@ void ESPUIClass::updateControlValue(BasicControl* basic_control, long value, int
     {
         return;
     }
-    
-    if (basic_control->control_flags & CONTROL_FLAG_NUMERIC) {
 
-     basic_control->numeric_value = value;
-     updateControl(basic_control, clientId);
+    if (basic_control->control_flags & CONTROL_FLAG_NUMERIC)
+    {
+        basic_control->numeric_value = value;
     }
-    else {
-     
-       (*(basic_control->string_value)) = value;
-       updateControl(basic_control, clientId);
+    else if (basic_control->getClassId() != BASIC_CONTROL_ID)
+    {
+        if ((basic_control->control_flags & CONTROL_FLAG_PCHAR) || 
+            !(basic_control->control_flags & CONTROL_FLAG_STRING) || 
+            !basic_control->string_value)
+        {
+            basic_control->control_flags &= ~CONTROL_FLAG_PCHAR;
+            basic_control->control_flags |= CONTROL_FLAG_STRING;
+            basic_control->string_value = new String(value);
+        }
+        else
+        {
+            *(basic_control->string_value) = value;
+        }
     }
+    updateControl(basic_control, clientId);
 }
 
 void ESPUIClass::updateControlValue(Control::ControlId_t id, const long value, int clientId)
@@ -942,12 +967,22 @@ void ESPUIClass::updateControlValue(BasicControl* control, const char* value, in
     {
         return;
     }
-     
+
     if (control->control_flags & CONTROL_FLAG_NUMERIC)
-     control->numeric_value = strtol(value, nullptr, 0);
-    else {
-      control->control_flags |= CONTROL_FLAG_PCHAR;
-      control->cstr_value = value;
+    {
+        control->numeric_value = strtol(value, nullptr, 0);
+    }
+    else
+    {
+        // If this control previously held a heap-allocated String*, free it before overwriting the union with cstr_value!
+        if ((control->control_flags & CONTROL_FLAG_STRING) && control->string_value)
+        {
+            delete control->string_value;
+            control->string_value = nullptr;
+            control->control_flags &= ~CONTROL_FLAG_STRING;
+        }
+        control->control_flags |= CONTROL_FLAG_PCHAR;
+        control->cstr_value = value;
     }
     updateControl(control, clientId);
 }

@@ -122,12 +122,12 @@ public:
     ESPUIClass()
     {
 	}
-    unsigned int jsonUpdateDocumentSize = 8192;
+    unsigned int jsonUpdateDocumentSize = 4096;
 #ifdef ESP8266
     unsigned int jsonInitialDocumentSize = 2000;
     unsigned int jsonChunkNumberMax = 5;
 #else
-    unsigned int jsonInitialDocumentSize = 8192;
+    unsigned int jsonInitialDocumentSize = 4096;
     unsigned int jsonChunkNumberMax = 4;
 #endif
     bool sliderContinuous = false;

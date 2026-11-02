@@ -67,12 +67,11 @@ ESPUIclient::~ESPUIclient()
 
 bool ESPUIclient::CanSend()
 {
-    bool Response = false;
-    if (nullptr != client)
+    if (nullptr != client && client->status() == WS_CONNECTED && !client->queueIsFull())
     {
-        Response = client->canSend();
+        return client->canSend();
     }
-    return Response;
+    return false;
 }
 
 void ESPUIclient::FillInHeader(JsonDocument& document)
@@ -105,7 +104,11 @@ bool ESPUIclient::SendClientNotification(ClientUpdateType_t value)
             break;
         }
 
-        AllocateJsonDocument(document, ESPUI.jsonUpdateDocumentSize);
+        #if ARDUINOJSON_VERSION_MAJOR > 6
+        JsonDocument document;
+#else
+        AllocateJsonDocument(document, 256);
+#endif
         FillInHeader(document);
         if(ClientUpdateType_t::ReloadNeeded == value)
         {
@@ -174,82 +177,87 @@ bool ESPUIclient::onWsEvent(AwsEventType type, void* arg, uint8_t* data, size_t 
 
         case WS_EVT_DATA:
         {
-            //Serial.println(F("ESPUIclient::OnWsEvent:WS_EVT_DATA"));
-            String msg = "";
-            msg.reserve(len + 1);
-
-            for (size_t i = 0; i < len; i++)
+            if (!data || len == 0)
             {
-                msg += (char)data[i];
+                break;
             }
 
-            String   cmd   = msg.substring(0, msg.indexOf(":"));
-            String   value = msg.substring(cmd.length() + 1, msg.lastIndexOf(':'));
-            uint16_t id    = msg.substring(msg.lastIndexOf(':') + 1).toInt();
-
-            #if defined(DEBUG_ESPUI)
-                if (ESPUI.verbosity >= Verbosity::VerboseJSON)
-                {
-                    Serial.println(String(F("  WS msg: ")) + msg);
-                    Serial.println(String(F("  WS cmd: ")) + cmd);
-                    Serial.println(String(F("   WS id: ")) + String(id));
-                    Serial.println(String(F("WS value: ")) + String(value));
-                }
-            #endif
-
-            if (cmd.equals(F("uiok")))
+            char stack_buf[128];
+            char* msg_buf = (len < sizeof(stack_buf)) ? stack_buf : (char*)malloc(len + 1);
+            if (!msg_buf)
             {
-                
-                Serial.println(String(F("ESPUIclient::OnWsEvent:WS_EVT_DATA:uiok:ProcessAck:")) + pCurrentFsmState->GetStateName());
+                break;
+            }
+
+            memcpy(msg_buf, data, len);
+            msg_buf[len] = '\0';
+
+            // Find the first and last ':' in the message.
+            // Note: "uiok:0" has ONLY ONE colon (cmd:id), while control events have two (cmd:value:id).
+            char* first_colon = strchr(msg_buf, ':');
+            if (!first_colon)
+            {
+                if (msg_buf != stack_buf) free(msg_buf);
+                break;
+            }
+
+            char* last_colon = strrchr(msg_buf, ':');
+
+            const char* cmd = msg_buf;
+            const char* value = "";
+            uint16_t id = (uint16_t)strtoul(last_colon + 1, nullptr, 10);
+
+            *first_colon = '\0';
+            if (last_colon != first_colon)
+            {
+                *last_colon = '\0';
+                value = first_colon + 1;
+            }
+
+            if (strcmp_P(cmd, PSTR("uiok")) == 0)
+            {
                 pCurrentFsmState->ProcessAck(id, emptyString);
+                if (msg_buf != stack_buf) free(msg_buf);
                 break;
             }
 
-            if (cmd.equals(F("uifragmentok")))
+            if (strcmp_P(cmd, PSTR("uifragmentok")) == 0)
             {
-                //Serial.println(String(F("ESPUIclient::OnWsEvent:WS_EVT_DATA:uiok:uifragmentok:")) + pCurrentFsmState->GetStateName() + ":ProcessAck");
-                if(!emptyString.equals(value))
+                if (*value != '\0')
                 {
-                    //Serial.println(String(F("ESPUIclient::OnWsEvent:WS_EVT_DATA:uiok:uifragmentok:")) + pCurrentFsmState->GetStateName() + ":ProcessAck:value:'" +  value + "'");
-                    pCurrentFsmState->ProcessAck(uint16_t(-1), value);
+                    pCurrentFsmState->ProcessAck(uint16_t(-1), String(value));
                 }
-                else
-                {
-                    //Serial.println(F("ERROR:ESPUIclient::OnWsEvent:WS_EVT_DATA:uifragmentok:ProcessAck:Fragment Header is missing"));
-                }
+                if (msg_buf != stack_buf) free(msg_buf);
                 break;
             }
 
-            if (cmd.equals(F("uiuok")))
+            if (strcmp_P(cmd, PSTR("uiuok")) == 0)
             {
-                //Serial.println(F("WS_EVT_DATA: uiuok. Unlock new async notifications"));
+                if (msg_buf != stack_buf) free(msg_buf);
                 break;
             }
 
-            if (cmd.equals(F("uicc")))
+            if (strcmp_P(cmd, PSTR("uicc")) == 0)
             {
-                Serial.println(F("WS_EVT_DATA: uicc."));
-
                 if (ESPUI.on_ws_custom_cmd)
-		  ESPUI.on_ws_custom_cmd(id);
+                {
+                    ESPUI.on_ws_custom_cmd(id);
+                }
+                if (msg_buf != stack_buf) free(msg_buf);
                 break;
             }
 
-            // Serial.println(F("WS_EVT_DATA:Process Control"));
             BasicControl* control = ESPUI.getControl(id);
-            if (nullptr == control)
+            if (nullptr != control)
             {
-                #if defined(DEBUG_ESPUI)
-                if (ESPUI.verbosity)
-                {
-                    //Serial.println(String(F("No control found for ID ")) + String(id));
-                }
-                #endif
-                break;
+                control->onWsEvent(cmd, value);
+                Response = true;
             }
-            control->onWsEvent(cmd, value);
-            // notify other clients of change
-            Response = true;
+
+            if (msg_buf != stack_buf)
+            {
+                free(msg_buf);
+            }
             break;
         }
 
@@ -306,34 +314,43 @@ bool ESPUIclient::SendControlsToClient(uint16_t startidx, ClientUpdateType_t Tra
             break;
         }
 
-        AllocateJsonDocument(document, ESPUI.jsonInitialDocumentSize);
+        /*AllocateJsonDocument(document, ESPUI.jsonInitialDocumentSize);
         FillInHeader(document);
         document[F("startindex")] = startidx;
         document[F("totalcontrols")] = uint16_t(-1); // ESPUI.controlCount;
 
         if(0 == startidx)
         {
-            // Serial.println("ESPUIclient:SendControlsToClient: Tell client we are starting a transfer of controls.");
             document["type"] = (ClientUpdateType_t::RebuildNeeded == TransferMode) ? UI_INITIAL_GUI : UI_EXTEND_GUI;
             CurrentSyncID = NextSyncID;
             NextSyncID = ESPUI.GetNextControlChangeId();
-        }
-        // Serial.println(String("ESPUIclient:SendControlsToClient:type: ") + String((uint32_t)document["type"]));
+        }*/
 
-        // Serial.println("ESPUIclient:SendControlsToClient: Build Controls.");
-        if(ESPUIcontrolMgr.prepareJSONChunk(startidx, document, ClientUpdateType_t::UpdateNeeded == TransferMode, FragmentRequest, CurrentSyncID))
+        chunkDocument.clear();
+        FillInHeader(chunkDocument);
+        chunkDocument[F("startindex")] = startidx;
+        chunkDocument[F("totalcontrols")] = uint16_t(-1);
+
+        if(0 == startidx)
+        {
+            chunkDocument["type"] = (ClientUpdateType_t::RebuildNeeded == TransferMode) ? UI_INITIAL_GUI : UI_EXTEND_GUI;
+            CurrentSyncID = NextSyncID;
+            NextSyncID = ESPUI.GetNextControlChangeId();
+        }
+        
+        if(ESPUIcontrolMgr.prepareJSONChunk(startidx, chunkDocument, ClientUpdateType_t::UpdateNeeded == TransferMode, FragmentRequest, CurrentSyncID))
         {
             #if defined(DEBUG_ESPUI)
                 if (ESPUI.verbosity >= Verbosity::VerboseJSON)
                 {
                     Serial.println(F("ESPUIclient:SendControlsToClient: Sending elements --------->"));
-                    serializeJson(document, Serial);
+                    serializeJson(chunkDocument, Serial);
                     Serial.println();
                 }
             #endif
 
             // Serial.println("ESPUIclient:SendControlsToClient: Send message.");
-            if(true == SendJsonDocToWebSocket(document))
+            if(true == SendJsonDocToWebSocket(chunkDocument))
             {
                 // Serial.println("ESPUIclient:SendControlsToClient: Sent.");
             }
@@ -362,54 +379,25 @@ bool ESPUIclient::SendJsonDocToWebSocket(JsonDocument& document)
     {
         if (!CanSend())
         {
-            #if defined(DEBUG_ESPUI)
-                if (ESPUI.verbosity >= Verbosity::VerboseJSON)
-                {
-                    Serial.println(F("ESPUIclient::SendJsonDocToWebSocket: Cannot Send to client. Not sending websocket message"));
-                }
-            #endif
-            // Serial.println("ESPUIclient::SendJsonDocToWebSocket: Cannot Send to client. Not sending websocket message");
             Response = false;
             break;
         }
 
-        //String json = JSONSlave::toString(document);
-
-        /*#if defined(DEBUG_ESPUI)
-            if (ESPUI.verbosity >= Verbosity::VerboseJSON)
-            {
-                Serial.println(String(F("ESPUIclient::SendJsonDocToWebSocket: json: '")) + json + "'");
-            }
-        #endif
-
-        #if defined(DEBUG_ESPUI)
-            if (ESPUI.verbosity >= Verbosity::VerboseJSON)
-            {
-                Serial.println(F("ESPUIclient::SendJsonDocToWebSocket: client.text"));
-            }
-        #endif*/
-        // Serial.println(F("ESPUIclient::SendJsonDocToWebSocket: client.text"));
-	//Serial.printf("json length %u\n\r",json.length());
-	//Serial.printf("json _cstr length %u\n\r", strlen(json.c_str()));
-	//Serial.printf("last char %u\n\r", *(json.c_str() + strlen(json.c_str())));
-	//Serial.println(json);
-        //delay(500);
-	//client->text(json);
-	/*std::string json {};
-	serializeJson(document, json);
-	Serial.printf("\n\r*********JSON length %u\n\r",json.length());
-	//Serial.printf("\n\r*********JSON length %u\n\r",strlen(json));
-
-	client->text(json.c_str());*/
-	const size_t len = measureJson(document);
+        const size_t len = measureJson(document);
         if (len > max_buffer_len)
-	 max_buffer_len = len;
+            max_buffer_len = len;
         log_i("max_buffer_len %lu", max_buffer_len);
-  	// original API from me-no-dev
-  	AsyncWebSocketMessageBuffer* buffer = ESPUI.WebSocket()->makeBuffer(len);
-  	//assert(buffer); // up to you to keep or remove this
-  	serializeJson(document, buffer->get(), len);
-  	client->text(buffer);
+
+        AsyncWebSocketMessageBuffer* buffer = ESPUI.WebSocket()->makeBuffer(len);
+        if (!buffer)
+        {
+            Response = false;
+            break;
+        }
+
+        // Pass buffer->get() (uint8_t*) and exact len so ArduinoJson writes raw bytes without a trailing '\0'
+        serializeJson(document, buffer->get(), len);
+        client->text(buffer);
     } while (false);
 
     return Response;

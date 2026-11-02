@@ -52,6 +52,8 @@ private:
     uint32_t    CurrentSyncID = 0;
     uint32_t    NextSyncID = 0;
 
+    JsonDocument chunkDocument;
+
 public:
                 ESPUIclient(AsyncWebSocketClient * _client);
                 ESPUIclient(const ESPUIclient & source);
